@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'mindful_usage_mode.dart';
+
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -10,6 +12,24 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool isMindfulModeOn = false;
+  final MindfulUsageMode mindfulUsageMode = MindfulUsageMode();
+
+  @override
+  void dispose() {
+    mindfulUsageMode.stop();
+    super.dispose();
+  }
+
+  void _toggleMindfulMode() {
+    setState(() {
+      isMindfulModeOn = !isMindfulModeOn;
+      if (isMindfulModeOn) {
+        mindfulUsageMode.start();
+      } else {
+        mindfulUsageMode.stop();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,11 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: Icons.timer,
               color: const Color.fromARGB(255, 0, 200, 0),
               isActive: isMindfulModeOn,
-              onToggle: () {
-                setState(() {
-                  isMindfulModeOn = !isMindfulModeOn;
-                });
-              },
+              onToggle: _toggleMindfulMode,
               maxWidth: screenWidth - 120,
             ),
             const Spacer(),

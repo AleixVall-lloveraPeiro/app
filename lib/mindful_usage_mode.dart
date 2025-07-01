@@ -1,3 +1,4 @@
+// mindful_usage_mode.dart
 import 'dart:async';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:device_apps/device_apps.dart';
@@ -17,6 +18,7 @@ class MindfulUsageMode {
   }
 
   void start() {
+    _sendActivationNotification();
     _usageTimer?.cancel();
     _usageTimer = Timer.periodic(const Duration(minutes: 5), (timer) async {
       bool isPhoneBeingUsed = await _checkIfPhoneIsInUse();
@@ -31,12 +33,9 @@ class MindfulUsageMode {
   }
 
   Future<bool> _checkIfPhoneIsInUse() async {
-    // Here we simulate phone usage check.
-    // In a full implementation, you might use a plugin like `usage_stats` (Android-only)
-    // to check screen time or app foreground usage.
-
+    // Simulate phone usage check
     List<Application> apps = await DeviceApps.getInstalledApplications(includeAppIcons: false);
-    return apps.isNotEmpty; // Simulated "activity"
+    return apps.isNotEmpty; // Simulated activity
   }
 
   Future<void> _sendMindfulNotification() async {
@@ -54,6 +53,25 @@ class MindfulUsageMode {
       0,
       'Stay Present',
       'You’ve been on your phone for 5 minutes. Take a mindful breath. 🌱',
+      notificationDetails,
+    );
+  }
+
+  Future<void> _sendActivationNotification() async {
+    const androidDetails = AndroidNotificationDetails(
+      'mindful_channel',
+      'Mindful Usage Alerts',
+      channelDescription: 'Notifies you to be mindful of your phone usage',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+
+    const notificationDetails = NotificationDetails(android: androidDetails);
+
+    await _notificationsPlugin.show(
+      1,
+      'Mindful Usage Mode Activated',
+      'You’ve entered mindful mode. Stay aware of your screen time. ⏰',
       notificationDetails,
     );
   }
