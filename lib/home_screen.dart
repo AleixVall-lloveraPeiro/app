@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'mindful_usage_mode.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -9,7 +10,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool isMindfulModeOn = false;
   final MindfulUsageMode mindfulUsageMode = MindfulUsageMode();
 
@@ -89,7 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
               context,
               title: 'Pomodoro Focus Mode',
               subtitle: '25 min focus + 5 min break ×4. Stay productive effortlessly.',
-              icon: Icons.local_pizza, // temporary tomato-like icon
+              icon: LucideIcons.clock9,
               color: const Color.fromARGB(255, 255, 99, 71),
               onPressed: _startPomodoro,
               maxWidth: screenWidth - 120,
@@ -246,7 +247,8 @@ class _HomeScreenState extends State<HomeScreen> {
           GestureDetector(
             onTap: onPressed,
             child: Container(
-              padding: const EdgeInsets.all(10),
+              width: 56,
+              height: 56,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: color.withOpacity(0.15),
