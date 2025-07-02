@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'mindful_usage_mode.dart';
+import 'pomodoro_mode.dart';
+import 'pomodoro_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,10 +15,12 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool isMindfulModeOn = false;
   final MindfulUsageMode mindfulUsageMode = MindfulUsageMode();
+  final PomodoroMode pomodoroMode = PomodoroMode();
 
   @override
   void dispose() {
     mindfulUsageMode.stop();
+    pomodoroMode.stop();
     super.dispose();
   }
 
@@ -32,10 +36,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _startPomodoro() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Pomodoro started!'),
-        duration: Duration(seconds: 2),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PomodoroScreen(pomodoroMode: pomodoroMode),
       ),
     );
   }
