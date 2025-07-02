@@ -16,106 +16,129 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool isMindfulModeOn = false;
   final MindfulUsageMode mindfulUsageMode = MindfulUsageMode();
   final PomodoroMode pomodoroMode = PomodoroMode();
+  late AnimationController _playController;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _playController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+      lowerBound: 0.0,
+      upperBound: 0.1,
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.9).animate(
+      CurvedAnimation(parent: _playController, curve: Curves.easeInOut),
+    );
+  }
 
   @override
   void dispose() {
     mindfulUsageMode.stop();
     pomodoroMode.stop();
+    _playController.dispose();
     super.dispose();
   }
 
   void _toggleMindfulMode() {
-  if (isMindfulModeOn) {
-    // Ask user for confirmation before deactivating
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          backgroundColor: Colors.white,
-          title: Text(
-            'Are you sure?',
-            style: GoogleFonts.playfairDisplay(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
+    if (isMindfulModeOn) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
             ),
-          ),
+            backgroundColor: Colors.white,
+            title: Text(
+              'Are you sure?',
+              style: GoogleFonts.playfairDisplay(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+            content: Text(
+              'You were doing great. Are you sure you want to stop being mindful now?',
+              style: GoogleFonts.playfairDisplay(
+                fontSize: 16,
+                color: Colors.black54,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: Text(
+                  'Cancel',
+                  style: GoogleFonts.playfairDisplay(
+                    fontSize: 16,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    isMindfulModeOn = false;
+                    mindfulUsageMode.stop();
+                  });
+                  Navigator.of(context).pop();
+                },
+                child: Text(
+                  'Yes, stop it',
+                  style: GoogleFonts.playfairDisplay(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.redAccent,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    } else {
+      setState(() {
+        isMindfulModeOn = true;
+        mindfulUsageMode.start();
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
           content: Text(
-            'You were doing great. Are you sure you want to stop being mindful now?',
+            'Mindful mode activated ✨',
             style: GoogleFonts.playfairDisplay(
               fontSize: 16,
-              color: Colors.black54,
+              color: Colors.white,
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text(
-                'Cancel',
-                style: GoogleFonts.playfairDisplay(
-                  fontSize: 16,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  isMindfulModeOn = false;
-                  mindfulUsageMode.stop();
-                });
-                Navigator.of(context).pop();
-              },
-              child: Text(
-                'Yes, stop it',
-                style: GoogleFonts.playfairDisplay(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.redAccent,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  } else {
-    setState(() {
-      isMindfulModeOn = true;
-      mindfulUsageMode.start();
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Mindful mode activated ✨',
-          style: GoogleFonts.playfairDisplay(
-            fontSize: 16,
-            color: Colors.white,
+          backgroundColor: Colors.green.shade700,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
+          duration: const Duration(seconds: 2),
         ),
-        backgroundColor: Colors.green.shade700,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+      );
+    }
   }
-}
 
   void _startPomodoro() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => PomodoroScreen(pomodoroMode: pomodoroMode),
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => PomodoroScreen(pomodoroMode: pomodoroMode),
+        transitionDuration: const Duration(milliseconds: 500),
+        transitionsBuilder: (_, anim, __, child) {
+          return FadeTransition(
+            opacity: CurvedAnimation(parent: anim, curve: Curves.easeInOut),
+            child: child,
+          );
+        },
       ),
     );
   }
@@ -325,15 +348,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
           const SizedBox(width: 8),
           GestureDetector(
-            onTap: onPressed,
-            child: Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: color.withOpacity(0.15),
+            onTapDown: (_) => _playController.forward(),
+            onTapUp: (_) {
+              _playController.reverse();
+              onPressed();
+            },
+            onTapCancel: () => _playController.reverse(),
+            child: ScaleTransition(
+              scale: _scaleAnimation,
+              child: Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color.withOpacity(0.15),
+                ),
+                child: Icon(Icons.play_arrow, size: 30, color: color),
               ),
-              child: Icon(Icons.play_arrow, size: 30, color: color),
             ),
           ),
         ],

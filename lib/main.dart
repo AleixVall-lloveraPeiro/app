@@ -146,7 +146,7 @@ class _GlowingStartButtonState extends State<GlowingStartButton>
 
         Navigator.of(context).push(
           PageRouteBuilder(
-            transitionDuration: const Duration(milliseconds: 300),
+            transitionDuration: const Duration(milliseconds: 600),
             pageBuilder: (_, __, ___) => const HomeScreen(),
             transitionsBuilder: (_, animation, __, child) {
               final offsetAnimation = Tween<Offset>(
