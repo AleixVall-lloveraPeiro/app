@@ -1,7 +1,6 @@
-import 'package:flutter/material.dart'; 
+import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'home_screen.dart';
-
 
 void main() {
   runApp(const MyApp());
@@ -124,33 +123,66 @@ class BlurOverlay extends StatelessWidget {
   }
 }
 
-class GlowingStartButton extends StatelessWidget {
+class GlowingStartButton extends StatefulWidget {
   const GlowingStartButton({super.key});
+
+  @override
+  State<GlowingStartButton> createState() => _GlowingStartButtonState();
+}
+
+class _GlowingStartButtonState extends State<GlowingStartButton>
+    with SingleTickerProviderStateMixin {
+  bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context, 
-          MaterialPageRoute(builder:(context) => const HomeScreen()),
+      onTapDown: (_) {
+        setState(() => _pressed = true);
+      },
+      onTapUp: (_) async {
+        setState(() => _pressed = false);
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        Navigator.of(context).push(
+          PageRouteBuilder(
+            transitionDuration: const Duration(milliseconds: 300),
+            pageBuilder: (_, __, ___) => const HomeScreen(),
+            transitionsBuilder: (_, animation, __, child) {
+              final offsetAnimation = Tween<Offset>(
+                begin: const Offset(0, 1),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOut,
+              ));
+              return SlideTransition(position: offsetAnimation, child: child);
+            },
+          ),
         );
       },
-      child: Container(
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 18),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [
-              Color.fromARGB(255, 0, 200, 0), // Groc
-              Color.fromARGB(255, 0, 100, 0),                // Orange
-            ],
+          gradient: LinearGradient(
+            colors: _pressed
+                ? [
+                    const Color.fromARGB(255, 0, 150, 0),
+                    const Color.fromARGB(255, 0, 80, 0),
+                  ]
+                : [
+                    const Color.fromARGB(255, 0, 200, 0),
+                    const Color.fromARGB(255, 0, 100, 0),
+                  ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(50),
           boxShadow: [
             BoxShadow(
-              color: Colors.orangeAccent.withOpacity(0.4),
+              color: Colors.greenAccent.withOpacity(0.4),
               blurRadius: 30,
               spreadRadius: 1,
             ),
