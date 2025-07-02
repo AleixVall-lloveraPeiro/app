@@ -25,15 +25,91 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _toggleMindfulMode() {
+  if (isMindfulModeOn) {
+    // Ask user for confirmation before deactivating
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          backgroundColor: Colors.white,
+          title: Text(
+            'Are you sure?',
+            style: GoogleFonts.playfairDisplay(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          content: Text(
+            'You were doing great. Are you sure you want to stop being mindful now?',
+            style: GoogleFonts.playfairDisplay(
+              fontSize: 16,
+              color: Colors.black54,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.playfairDisplay(
+                  fontSize: 16,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  isMindfulModeOn = false;
+                  mindfulUsageMode.stop();
+                });
+                Navigator.of(context).pop();
+              },
+              child: Text(
+                'Yes, stop it',
+                style: GoogleFonts.playfairDisplay(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.redAccent,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  } else {
     setState(() {
-      isMindfulModeOn = !isMindfulModeOn;
-      if (isMindfulModeOn) {
-        mindfulUsageMode.start();
-      } else {
-        mindfulUsageMode.stop();
-      }
+      isMindfulModeOn = true;
+      mindfulUsageMode.start();
     });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Mindful mode activated ✨',
+          style: GoogleFonts.playfairDisplay(
+            fontSize: 16,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: Colors.green.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
+}
 
   void _startPomodoro() {
     Navigator.push(
