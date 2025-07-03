@@ -24,12 +24,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     super.initState();
     _playController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
-      lowerBound: 0.0,
-      upperBound: 0.1,
+      duration: const Duration(milliseconds: 150),
     );
     _scaleAnimation = Tween<double>(begin: 1.0, end: 0.85).animate(
-      CurvedAnimation(parent: _playController, curve: Curves.easeInOutCubic),
+      CurvedAnimation(parent: _playController, curve: Curves.easeInOut),
     );
   }
 
@@ -180,8 +178,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             _buildOptionSwitch(
               context,
               title: 'Mindful Usage Mode',
-              subtitle:
-                  'Receive a gentle reminder every 5 minutes you’re using your phone.',
+              subtitle: 'Receive a gentle reminder every 5 minutes you’re using your phone.',
               icon: Icons.timer,
               color: const Color.fromARGB(255, 0, 200, 0),
               isActive: isMindfulModeOn,
@@ -356,21 +353,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             onTapCancel: () => _playController.reverse(),
             child: ScaleTransition(
               scale: _scaleAnimation,
-              child: Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: color.withOpacity(0.15),
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withOpacity(0.5),
-                      blurRadius: 12,
-                      spreadRadius: 1,
+              child: AnimatedBuilder(
+                animation: _scaleAnimation,
+                builder: (context, child) {
+                  return Transform.scale(
+                    scale: _scaleAnimation.value,
+                    child: Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: color.withOpacity(0.15),
+                        boxShadow: [
+                          BoxShadow(
+                            color: color.withOpacity(0.5),
+                            blurRadius: 12,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      child: Icon(Icons.play_arrow, size: 30, color: color),
                     ),
-                  ],
-                ),
-                child: Icon(Icons.play_arrow, size: 30, color: color),
+                  );
+                },
               ),
             ),
           ),

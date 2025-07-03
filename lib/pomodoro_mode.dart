@@ -13,8 +13,8 @@ class PomodoroMode {
 
   Timer? _timer;
 
-  final Duration workDuration = const Duration(minutes: 25);
-  final Duration restDuration = const Duration(minutes: 5);
+  final Duration workDuration = const Duration(minutes: 1);
+  final Duration restDuration = const Duration(minutes: 1);
 
   PomodoroMode() {
     _initializeNotifications();

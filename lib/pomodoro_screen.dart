@@ -1,3 +1,4 @@
+// pomodoro_screen.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'pomodoro_mode.dart';
@@ -11,16 +12,30 @@ class PomodoroScreen extends StatefulWidget {
   State<PomodoroScreen> createState() => _PomodoroScreenState();
 }
 
-class _PomodoroScreenState extends State<PomodoroScreen> {
+class _PomodoroScreenState extends State<PomodoroScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _backgroundPulseController;
+  late Animation<double> _backgroundScale;
+
   @override
   void initState() {
     super.initState();
     widget.pomodoroMode.start();
+
+    _backgroundPulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+
+    _backgroundScale = Tween<double>(begin: 1.0, end: 1.02).animate(
+      CurvedAnimation(parent: _backgroundPulseController, curve: Curves.easeInOut),
+    );
   }
 
   @override
   void dispose() {
     widget.pomodoroMode.stop();
+    _backgroundPulseController.dispose();
     super.dispose();
   }
 
@@ -36,57 +51,89 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
     final mode = widget.pomodoroMode;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Pomodoro Focus'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 1,
-      ),
-      body: Center(
-        child: ValueListenableBuilder(
-          valueListenable: mode.timeLeft,
-          builder: (context, Duration time, _) {
-            return Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ValueListenableBuilder(
-                  valueListenable: mode.isWorking,
-                  builder: (context, bool isWorking, _) {
-                    return Text(
-                      isWorking ? 'Focus Time' : 'Break Time',
-                      style: GoogleFonts.playfairDisplay(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        color: isWorking ? Colors.red : Colors.green,
-                      ),
+      body: AnimatedBuilder(
+        animation: _backgroundPulseController,
+        builder: (context, child) {
+          return Container(
+            width: double.infinity,
+            height: double.infinity,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFFFAF3E0), Color(0xFFE0F7FA)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: Transform.scale(
+              scale: _backgroundScale.value,
+              child: Center(
+                child: ValueListenableBuilder(
+                  valueListenable: mode.timeLeft,
+                  builder: (context, Duration time, _) {
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ValueListenableBuilder(
+                          valueListenable: mode.isWorking,
+                          builder: (context, bool isWorking, _) {
+                            return Text(
+                              isWorking ? 'Focus Time' : 'Break Time',
+                              style: GoogleFonts.playfairDisplay(
+                                fontSize: 32,
+                                fontWeight: FontWeight.w700,
+                                color: isWorking ? Colors.red.shade300 : Colors.green.shade400,
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 30),
+                        Text(
+                          _formatDuration(time),
+                          style: GoogleFonts.playfairDisplay(
+                            fontSize: 70,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 50),
+                        ElevatedButton(
+                          onPressed: () {
+                            mode.stop();
+                            Navigator.pop(context);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.black.withOpacity(0.05),
+                            foregroundColor: Colors.black,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 40,
+                              vertical: 16,
+                            ),
+                            elevation: 0,
+                          ),
+                          child: Text(
+                            'Stop Session',
+                            style: GoogleFonts.playfairDisplay(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
                     );
                   },
                 ),
-                const SizedBox(height: 20),
-                Text(
-                  _formatDuration(time),
-                  style: const TextStyle(
-                    fontSize: 48,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 40),
-                ElevatedButton(
-                  onPressed: () {
-                    mode.stop();
-                    Navigator.pop(context);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey[300],
-                    foregroundColor: Colors.black,
-                  ),
-                  child: const Text('Stop Session'),
-                ),
-              ],
-            );
-          },
-        ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
 }
+
+// pomodoro_mode.dart (només cal canviar els missatges segons les durades noves si vols)
+final Duration workDuration = const Duration(minutes: 25);
+final Duration restDuration = const Duration(minutes: 5);
