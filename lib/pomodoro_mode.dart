@@ -13,8 +13,8 @@ class PomodoroMode {
 
   Timer? _timer;
 
-  final Duration workDuration = const Duration(seconds: 5);
-  final Duration restDuration = const Duration(seconds: 5);
+  final Duration workDuration = const Duration(minutes: 25);
+  final Duration restDuration = const Duration(minutes: 5);
 
   VoidCallback? onPomodoroCompleted;
 
