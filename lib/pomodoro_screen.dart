@@ -1,4 +1,3 @@
-// pomodoro_screen.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'pomodoro_mode.dart';
@@ -20,6 +19,11 @@ class _PomodoroScreenState extends State<PomodoroScreen>
   @override
   void initState() {
     super.initState();
+
+    widget.pomodoroMode.onPomodoroCompleted = () {
+      _showMotivationalDialog();
+    };
+
     widget.pomodoroMode.start();
 
     _backgroundPulseController = AnimationController(
@@ -44,6 +48,58 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     final minutes = twoDigits(duration.inMinutes.remainder(60));
     final seconds = twoDigits(duration.inSeconds.remainder(60));
     return '$minutes:$seconds';
+  }
+
+  void _showMotivationalDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text("Amazing work!", style: GoogleFonts.playfairDisplay(fontSize: 22, fontWeight: FontWeight.bold)),
+        content: Text("You've completed 4 Pomodoro cycles. Time for a well-deserved rest. 🎉",
+            style: GoogleFonts.playfairDisplay(fontSize: 16)),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pop();
+            },
+            child: Text("Back to Home", style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmStop() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: Colors.white,
+        title: Text("Are you sure?",
+            style: GoogleFonts.playfairDisplay(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87)),
+        content: Text("You're doing great. Are you sure you want to stop focusing now?",
+            style: GoogleFonts.playfairDisplay(fontSize: 16, color: Colors.black54)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text("Cancel", style: GoogleFonts.playfairDisplay(color: Colors.grey.shade600)),
+          ),
+          TextButton(
+            onPressed: () {
+              widget.pomodoroMode.stop();
+              Navigator.of(context).pop();
+              Navigator.of(context).pop();
+            },
+            child: Text("Yes, stop it",
+                style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.bold, color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -97,10 +153,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                         ),
                         const SizedBox(height: 50),
                         ElevatedButton(
-                          onPressed: () {
-                            mode.stop();
-                            Navigator.pop(context);
-                          },
+                          onPressed: _confirmStop,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.black.withOpacity(0.05),
                             foregroundColor: Colors.black,
@@ -133,7 +186,3 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     );
   }
 }
-
-// pomodoro_mode.dart (només cal canviar els missatges segons les durades noves si vols)
-final Duration workDuration = const Duration(minutes: 25);
-final Duration restDuration = const Duration(minutes: 5);

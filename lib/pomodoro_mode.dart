@@ -13,10 +13,12 @@ class PomodoroMode {
 
   Timer? _timer;
 
-  final Duration workDuration = const Duration(minutes: 1);
-  final Duration restDuration = const Duration(minutes: 1);
+  final Duration workDuration = const Duration(seconds: 5);
+  final Duration restDuration = const Duration(seconds: 5);
 
-  PomodoroMode() {
+  VoidCallback? onPomodoroCompleted;
+
+  PomodoroMode({this.onPomodoroCompleted}) {
     _initializeNotifications();
   }
 
@@ -80,6 +82,9 @@ class PomodoroMode {
 
     if (completedCycles.value >= 4 && isWorking.value) {
       stop();
+      if (onPomodoroCompleted != null) {
+        onPomodoroCompleted!();
+      }
       return;
     }
 
