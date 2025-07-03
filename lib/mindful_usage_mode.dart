@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:device_apps/device_apps.dart';
+import 'package:screen_state/screen_state.dart';
 
 class MindfulUsageMode {
   final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
-  Timer? _usageTimer;
-  int _usageMinutes = 0;
+  final Screen _screen = Screen();
+
+  StreamSubscription<ScreenStateEvent>? _screenSubscription;
+  Timer? _activeUsageTimer;
+  int _activeSeconds = 0;
 
   MindfulUsageMode() {
     _initializeNotifications();
@@ -19,24 +22,40 @@ class MindfulUsageMode {
 
   void start() {
     _sendStartNotification();
-    _usageMinutes = 0;
-    _usageTimer?.cancel();
-    _usageTimer = Timer.periodic(const Duration(minutes: 5), (timer) async {
-      bool isPhoneBeingUsed = await _checkIfPhoneIsInUse();
-      if (isPhoneBeingUsed) {
-        _usageMinutes += 5;
-        _sendMindfulNotification();
+    _listenToScreenEvents();
+  }
+
+  void stop() {
+    _screenSubscription?.cancel();
+    _activeUsageTimer?.cancel();
+    _activeSeconds = 0;
+  }
+
+  void _listenToScreenEvents() {
+    _screenSubscription = _screen.screenStateStream.listen((event) {
+      if (event == ScreenStateEvent.SCREEN_ON) {
+        _startCounting();
+      } else if (event == ScreenStateEvent.SCREEN_OFF) {
+        _stopCounting(reset: true);
       }
     });
   }
 
-  void stop() {
-    _usageTimer?.cancel();
+  void _startCounting() {
+    _activeUsageTimer?.cancel();
+    _activeSeconds = 0;
+    _activeUsageTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _activeSeconds++;
+      if (_activeSeconds >= 300) { // 5 minutes
+        _sendMindfulNotification();
+        _stopCounting(reset: true);
+      }
+    });
   }
 
-  Future<bool> _checkIfPhoneIsInUse() async {
-    List<Application> apps = await DeviceApps.getInstalledApplications(includeAppIcons: false);
-    return apps.isNotEmpty; // Simulated "activity"
+  void _stopCounting({bool reset = false}) {
+    _activeUsageTimer?.cancel();
+    if (reset) _activeSeconds = 0;
   }
 
   Future<void> _sendMindfulNotification() async {
@@ -53,7 +72,7 @@ class MindfulUsageMode {
     await _notificationsPlugin.show(
       0,
       'Stay Present',
-      'You’ve used your phone for $_usageMinutes minutes. Take a mindful breath. 🌱',
+      'You’ve been using your phone for 5 minutes straight. Take a mindful pause. 🌱',
       notificationDetails,
     );
   }
@@ -72,7 +91,7 @@ class MindfulUsageMode {
     await _notificationsPlugin.show(
       1,
       'Mindful Usage Mode Activated',
-      'Timer started. We’ll remind you every 5 minutes of continuous usage.',
+      'We’ll notify you if you spend 5 minutes straight on your phone.',
       notificationDetails,
     );
   }

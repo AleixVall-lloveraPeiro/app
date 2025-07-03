@@ -19,6 +19,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_animate: ^4.5.2
   lucide_icons: ^0.257.0
+  screen_state: ^4.1.1
 
 dev_dependencies:
   flutter_test:
