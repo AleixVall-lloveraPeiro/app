@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:percent_indicator/circular_percent_indicator.dart';
 import 'package:screen_state/screen_state.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'dart:math';
 
 class DailyUsageGoalScreen extends StatefulWidget {
   const DailyUsageGoalScreen({super.key});
@@ -12,27 +14,36 @@ class DailyUsageGoalScreen extends StatefulWidget {
 }
 
 class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
+  Duration _dailyLimit = const Duration(hours: 2);
+  Duration _currentUsage = Duration.zero;
+  late Timer _usageTimer;
   final Screen _screen = Screen();
   StreamSubscription<ScreenStateEvent>? _screenSubscription;
-  Timer? _usageTimer;
-
-  int _activeSeconds = 0;
-  int _goalSeconds = 7200; // Default goal: 2h
+  bool _isCounting = false;
+  final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
 
   @override
   void initState() {
     super.initState();
+    _initializeNotifications();
     _listenToScreenEvents();
   }
 
   @override
   void dispose() {
     _screenSubscription?.cancel();
-    _usageTimer?.cancel();
+    _usageTimer.cancel();
     super.dispose();
   }
 
-  void _listenToScreenEvents() {
+  void _initializeNotifications() async {
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const initializationSettings = InitializationSettings(android: androidSettings);
+    await _notificationsPlugin.initialize(initializationSettings);
+  }
+
+  void _listenToScreenEvents() async {
+    if (!await _screen.isScreenOn) return;
     _screenSubscription = _screen.screenStateStream.listen((event) {
       if (event == ScreenStateEvent.SCREEN_ON) {
         _startCounting();
@@ -43,119 +54,170 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
   }
 
   void _startCounting() {
-    _usageTimer?.cancel();
+    if (_isCounting) return;
+    _isCounting = true;
     _usageTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
-        _activeSeconds++;
+        _currentUsage += const Duration(seconds: 1);
+        if (_currentUsage >= _dailyLimit) {
+          _sendLimitReachedNotification();
+          _stopCounting();
+        }
       });
     });
   }
 
   void _stopCounting() {
-    _usageTimer?.cancel();
+    _isCounting = false;
+    _usageTimer.cancel();
   }
 
-  void _updateGoal(Duration newGoal) {
-    setState(() {
-      _goalSeconds = newGoal.inSeconds;
-    });
+  Future<void> _sendLimitReachedNotification() async {
+    const androidDetails = AndroidNotificationDetails(
+      'limit_channel',
+      'Daily Limit Reached',
+      channelDescription: 'Notifies when daily usage limit is reached',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+
+    const notificationDetails = NotificationDetails(android: androidDetails);
+
+    await _notificationsPlugin.show(
+      0,
+      'Limit Reached',
+      'You have reached your daily usage goal.',
+      notificationDetails,
+    );
+  }
+
+  void _openTimePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) {
+        return SizedBox(
+          height: 250,
+          child: Column(
+            children: [
+              Expanded(
+                child: CupertinoTimerPicker(
+                  initialTimerDuration: _dailyLimit,
+                  mode: CupertinoTimerPickerMode.hm,
+                  onTimerDurationChanged: (Duration newDuration) {
+                    setState(() {
+                      _dailyLimit = newDuration;
+                    });
+                  },
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  'Done',
+                  style: GoogleFonts.playfairDisplay(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blueAccent,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    double percent = (_activeSeconds / _goalSeconds).clamp(0.0, 1.0);
-    Duration active = Duration(seconds: _activeSeconds);
-    Duration goal = Duration(seconds: _goalSeconds);
+    double percent = min(_currentUsage.inSeconds / _dailyLimit.inSeconds, 1.0);
+    String formattedUsage =
+        '${_currentUsage.inHours.toString().padLeft(2, '0')}:${(_currentUsage.inMinutes % 60).toString().padLeft(2, '0')}';
+    String formattedLimit =
+        '${_dailyLimit.inHours.toString().padLeft(2, '0')}:${(_dailyLimit.inMinutes % 60).toString().padLeft(2, '0')}';
 
     return Scaffold(
+      backgroundColor: const Color(0xFFFDFDFD),
       appBar: AppBar(
-        title: const Text("Daily Usage Goal"),
-        backgroundColor: Colors.lightBlue.shade100,
-        elevation: 0,
+        title: Text(
+          'Daily Usage Goal',
+          style: GoogleFonts.playfairDisplay(
+            color: Colors.black87,
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+        centerTitle: true,
       ),
-      backgroundColor: Colors.white,
       body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32),
+        padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 40),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              "Set your daily phone usage goal",
-              style: GoogleFonts.playfairDisplay(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: Colors.black87,
-              ),
-              textAlign: TextAlign.center,
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 220,
+                  height: 220,
+                  child: CircularProgressIndicator(
+                    value: percent,
+                    strokeWidth: 14,
+                    backgroundColor: Colors.blue.shade100,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.blueAccent),
+                    strokeCap: StrokeCap.round,
+                  ),
+                ),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      formattedUsage,
+                      style: GoogleFonts.playfairDisplay(
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blueAccent,
+                      ),
+                    ),
+                    Text(
+                      'of $formattedLimit',
+                      style: GoogleFonts.playfairDisplay(
+                        fontSize: 16,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            const SizedBox(height: 24),
-            _buildTimeSelector(),
-            const SizedBox(height: 32),
-            CircularPercentIndicator(
-              radius: 120.0,
-              lineWidth: 14.0,
-              percent: percent,
-              progressColor: Colors.lightBlueAccent,
-              backgroundColor: Colors.grey.shade200,
-              circularStrokeCap: CircularStrokeCap.round,
-              center: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    _formatDuration(active),
-                    style: GoogleFonts.playfairDisplay(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "/ ${_formatDuration(goal)}",
-                    style: GoogleFonts.playfairDisplay(
-                      fontSize: 16,
-                      color: Colors.black45,
-                    ),
-                  ),
-                ],
+            const SizedBox(height: 40),
+            ElevatedButton(
+              onPressed: _openTimePicker,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: Text(
+                'Set Daily Limit',
+                style: GoogleFonts.playfairDisplay(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
               ),
             ),
           ],
         ),
       ),
     );
-  }
-
-  Widget _buildTimeSelector() {
-    return Column(
-      children: [
-        Slider(
-          value: _goalSeconds.toDouble(),
-          min: 1800,
-          max: 21600,
-          divisions: 39,
-          label: _formatDuration(Duration(seconds: _goalSeconds)),
-          activeColor: Colors.lightBlueAccent,
-          onChanged: (value) {
-            _updateGoal(Duration(seconds: value.toInt()));
-          },
-        ),
-        Text(
-          "Goal: ${_formatDuration(Duration(seconds: _goalSeconds))}",
-          style: GoogleFonts.playfairDisplay(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-            color: Colors.black87,
-          ),
-        ),
-      ],
-    );
-  }
-
-  String _formatDuration(Duration d) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    int h = d.inHours;
-    int m = d.inMinutes.remainder(60);
-    return h > 0 ? "${twoDigits(h)}h ${twoDigits(m)}m" : "${twoDigits(m)}m";
   }
 }
