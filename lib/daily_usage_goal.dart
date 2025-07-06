@@ -1,10 +1,13 @@
+// ignore_for_file: unused_field
+
 import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:screen_state/screen_state.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'dart:math';
 
 class DailyUsageGoalScreen extends StatefulWidget {
   const DailyUsageGoalScreen({super.key});
@@ -20,6 +23,7 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
   final Screen _screen = Screen();
   StreamSubscription<ScreenStateEvent>? _screenSubscription;
   bool _isCounting = false;
+  bool _screenIsOn = false; // Esta variable ya se usa correctamente ahora
   final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
 
   @override
@@ -43,11 +47,12 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
   }
 
   void _listenToScreenEvents() async {
-    if (!await _screen.isScreenOn) return;
     _screenSubscription = _screen.screenStateStream.listen((event) {
       if (event == ScreenStateEvent.SCREEN_ON) {
+        _screenIsOn = true;
         _startCounting();
       } else if (event == ScreenStateEvent.SCREEN_OFF) {
+        _screenIsOn = false;
         _stopCounting();
       }
     });
@@ -104,14 +109,22 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
           child: Column(
             children: [
               Expanded(
-                child: CupertinoTimerPicker(
-                  initialTimerDuration: _dailyLimit,
-                  mode: CupertinoTimerPickerMode.hm,
-                  onTimerDurationChanged: (Duration newDuration) {
-                    setState(() {
-                      _dailyLimit = newDuration;
-                    });
-                  },
+                child: CupertinoTheme(
+                  data: const CupertinoThemeData(
+                    brightness: Brightness.light,
+                    textTheme: CupertinoTextThemeData(
+                      dateTimePickerTextStyle: TextStyle(color: Colors.black, fontSize: 20),
+                    ),
+                  ),
+                  child: CupertinoTimerPicker(
+                    initialTimerDuration: _dailyLimit,
+                    mode: CupertinoTimerPickerMode.hm,
+                    onTimerDurationChanged: (Duration newDuration) {
+                      setState(() {
+                        _dailyLimit = newDuration;
+                      });
+                    },
+                  ),
                 ),
               ),
               TextButton(
@@ -155,67 +168,69 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
         elevation: 0.5,
         centerTitle: true,
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                SizedBox(
-                  width: 220,
-                  height: 220,
-                  child: CircularProgressIndicator(
-                    value: percent,
-                    strokeWidth: 14,
-                    backgroundColor: Colors.blue.shade100,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.blueAccent),
-                    strokeCap: StrokeCap.round,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 40),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox(
+                    width: 220,
+                    height: 220,
+                    child: CircularProgressIndicator(
+                      value: percent,
+                      strokeWidth: 14,
+                      backgroundColor: Colors.blue.shade100,
+                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.blueAccent),
+                      strokeCap: StrokeCap.round,
+                    ),
+                  ),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        formattedUsage,
+                        style: GoogleFonts.playfairDisplay(
+                          fontSize: 36,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blueAccent,
+                        ),
+                      ),
+                      Text(
+                        'of $formattedLimit',
+                        style: GoogleFonts.playfairDisplay(
+                          fontSize: 16,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 40),
+              ElevatedButton(
+                onPressed: _openTimePicker,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      formattedUsage,
-                      style: GoogleFonts.playfairDisplay(
-                        fontSize: 36,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blueAccent,
-                      ),
-                    ),
-                    Text(
-                      'of $formattedLimit',
-                      style: GoogleFonts.playfairDisplay(
-                        fontSize: 16,
-                        color: Colors.black54,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 40),
-            ElevatedButton(
-              onPressed: _openTimePicker,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent,
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                child: Text(
+                  'Set Daily Limit',
+                  style: GoogleFonts.playfairDisplay(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
                 ),
               ),
-              child: Text(
-                'Set Daily Limit',
-                style: GoogleFonts.playfairDisplay(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
