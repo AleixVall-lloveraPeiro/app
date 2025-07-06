@@ -1,13 +1,11 @@
-// ignore_for_file: unused_field
-
 import 'dart:async';
-import 'dart:math';
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:screen_state/screen_state.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'dart:math';
+import 'backend_service_daily_usage_mode.dart';
 
 class DailyUsageGoalScreen extends StatefulWidget {
   const DailyUsageGoalScreen({super.key});
@@ -16,27 +14,38 @@ class DailyUsageGoalScreen extends StatefulWidget {
   State<DailyUsageGoalScreen> createState() => _DailyUsageGoalScreenState();
 }
 
-class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
+class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen>
+    with WidgetsBindingObserver {
   Duration _dailyLimit = const Duration(hours: 2);
   Duration _currentUsage = Duration.zero;
-  late Timer _usageTimer;
+  Timer? _usageTimer;
   final Screen _screen = Screen();
   StreamSubscription<ScreenStateEvent>? _screenSubscription;
   bool _isCounting = false;
-  bool _screenIsOn = false; // Esta variable ya se usa correctamente ahora
-  final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
+  final _usageService = UsageStorageService();
+  final FlutterLocalNotificationsPlugin _notificationsPlugin =
+      FlutterLocalNotificationsPlugin();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeNotifications();
+    _loadStoredData();
     _listenToScreenEvents();
+  }
+
+  Future<void> _loadStoredData() async {
+    _dailyLimit = await _usageService.getDailyLimit();
+    _currentUsage = await _usageService.getDailyUsage();
+    setState(() {});
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _screenSubscription?.cancel();
-    _usageTimer.cancel();
+    _usageTimer?.cancel();
     super.dispose();
   }
 
@@ -46,35 +55,44 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
     await _notificationsPlugin.initialize(initializationSettings);
   }
 
-  void _listenToScreenEvents() async {
+  void _listenToScreenEvents() {
     _screenSubscription = _screen.screenStateStream.listen((event) {
       if (event == ScreenStateEvent.SCREEN_ON) {
-        _screenIsOn = true;
         _startCounting();
       } else if (event == ScreenStateEvent.SCREEN_OFF) {
-        _screenIsOn = false;
         _stopCounting();
       }
     });
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startCounting();
+    } else {
+      _stopCounting();
+    }
+  }
+
   void _startCounting() {
     if (_isCounting) return;
     _isCounting = true;
-    _usageTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        _currentUsage += const Duration(seconds: 1);
-        if (_currentUsage >= _dailyLimit) {
-          _sendLimitReachedNotification();
-          _stopCounting();
-        }
-      });
+    _usageTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      _currentUsage += const Duration(seconds: 1);
+      await _usageService.addUsage(const Duration(seconds: 1));
+
+      setState(() {});
+
+      if (_currentUsage >= _dailyLimit) {
+        _sendLimitReachedNotification();
+        _stopCounting();
+      }
     });
   }
 
   void _stopCounting() {
     _isCounting = false;
-    _usageTimer.cancel();
+    _usageTimer?.cancel();
   }
 
   Future<void> _sendLimitReachedNotification() async {
@@ -113,16 +131,15 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
                   data: const CupertinoThemeData(
                     brightness: Brightness.light,
                     textTheme: CupertinoTextThemeData(
-                      dateTimePickerTextStyle: TextStyle(color: Colors.black, fontSize: 20),
+                      dateTimePickerTextStyle: TextStyle(color: Colors.black),
                     ),
                   ),
                   child: CupertinoTimerPicker(
                     initialTimerDuration: _dailyLimit,
                     mode: CupertinoTimerPickerMode.hm,
-                    onTimerDurationChanged: (Duration newDuration) {
-                      setState(() {
-                        _dailyLimit = newDuration;
-                      });
+                    onTimerDurationChanged: (Duration newDuration) async {
+                      setState(() => _dailyLimit = newDuration);
+                      await _usageService.setDailyLimit(newDuration);
                     },
                   ),
                 ),
@@ -184,7 +201,8 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
                       value: percent,
                       strokeWidth: 14,
                       backgroundColor: Colors.blue.shade100,
-                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.blueAccent),
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(Colors.blueAccent),
                       strokeCap: StrokeCap.round,
                     ),
                   ),
@@ -215,7 +233,8 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
                 onPressed: _openTimePicker,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueAccent,
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
