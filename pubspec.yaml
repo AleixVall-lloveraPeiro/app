@@ -20,6 +20,7 @@ dependencies:
   flutter_animate: ^4.5.2
   lucide_icons: ^0.257.0
   screen_state: ^4.1.1
+  percent_indicator: ^4.2.5
 
 dev_dependencies:
   flutter_test:

@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'mindful_usage_mode.dart';
 import 'pomodoro_mode.dart';
 import 'pomodoro_screen.dart';
+import 'daily_usage_goal.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -141,6 +142,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  void _navigateToDailyGoal() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const DailyUsageGoalScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -194,6 +202,61 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               color: const Color.fromARGB(255, 255, 99, 71),
               onPressed: _startPomodoro,
               maxWidth: screenWidth - 120,
+            ),
+            const SizedBox(height: 24),
+            GestureDetector(
+              onTap: _navigateToDailyGoal,
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFF6EC1E4).withOpacity(0.1),
+                      ),
+                      child: Icon(Icons.hourglass_bottom, color: const Color(0xFF6EC1E4), size: 28),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Daily Usage Goal',
+                            style: GoogleFonts.playfairDisplay(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Set a daily limit to become more aware and disciplined with your time.',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.black45,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 40),
             Text(
