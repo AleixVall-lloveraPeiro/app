@@ -9,6 +9,7 @@ class MindfulUsageMode {
   StreamSubscription<ScreenStateEvent>? _screenSubscription;
   Timer? _activeUsageTimer;
   int _activeSeconds = 0;
+  DateTime? _screenOnStartTime;
 
   MindfulUsageMode() {
     _initializeNotifications();
@@ -21,8 +22,9 @@ class MindfulUsageMode {
   }
 
   void start() {
-    _sendStartNotification();
-    _listenToScreenEvents();
+  _sendStartNotification();
+  _listenToScreenEvents();
+  _startCounting();
   }
 
   void stop() {
@@ -34,8 +36,10 @@ class MindfulUsageMode {
   void _listenToScreenEvents() {
     _screenSubscription = _screen.screenStateStream.listen((event) {
       if (event == ScreenStateEvent.SCREEN_ON) {
+        print('[INFO] Pantalla ENCENDIDA');
         _startCounting();
       } else if (event == ScreenStateEvent.SCREEN_OFF) {
+        print('[INFO] Pantalla APAGADA');
         _stopCounting(reset: true);
       }
     });
@@ -43,19 +47,22 @@ class MindfulUsageMode {
 
   void _startCounting() {
     _activeUsageTimer?.cancel();
-    _activeSeconds = 0;
+    _screenOnStartTime = DateTime.now();
     _activeUsageTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _activeSeconds++;
-      if (_activeSeconds >= 300) { // 5 minutes
+      print('[DEBUG] Segundos activos: $_activeSeconds');
+      if (_activeSeconds % 300 == 0) { // Cada 5 minutos seguidos
         _sendMindfulNotification();
-        _stopCounting(reset: true);
       }
     });
   }
 
   void _stopCounting({bool reset = false}) {
     _activeUsageTimer?.cancel();
-    if (reset) _activeSeconds = 0;
+    if (reset) {
+      _activeSeconds = 0;
+      _screenOnStartTime = null;
+    }
   }
 
   Future<void> _sendMindfulNotification() async {
