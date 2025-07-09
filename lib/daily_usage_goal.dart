@@ -22,6 +22,7 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen>
   final Screen _screen = Screen();
   StreamSubscription<ScreenStateEvent>? _screenSubscription;
   bool _isCounting = false;
+  bool _notificationSent = false;
   final _usageService = UsageStorageService();
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
@@ -81,12 +82,12 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen>
       _currentUsage += const Duration(seconds: 1);
       await _usageService.addUsage(const Duration(seconds: 1));
 
-      setState(() {});
-
-      if (_currentUsage >= _dailyLimit) {
+      if (!_notificationSent && _currentUsage >= _dailyLimit) {
         _sendLimitReachedNotification();
-        _stopCounting();
+        _notificationSent = true;
       }
+
+      setState(() {});
     });
   }
 
@@ -140,6 +141,7 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen>
                     onTimerDurationChanged: (Duration newDuration) async {
                       setState(() => _dailyLimit = newDuration);
                       await _usageService.setDailyLimit(newDuration);
+                      _notificationSent = false;
                     },
                   ),
                 ),
@@ -147,7 +149,7 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen>
               TextButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  _startCounting(); // ⬅ Aquí arranca el conteo al pulsar Done
+                  _startCounting();
                 },
                 child: Text(
                   'Done',
