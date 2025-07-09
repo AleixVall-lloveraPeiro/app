@@ -145,7 +145,10 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen>
                 ),
               ),
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () {
+                  Navigator.pop(context);
+                  _startCounting(); // ⬅ Aquí arranca el conteo al pulsar Done
+                },
                 child: Text(
                   'Done',
                   style: GoogleFonts.playfairDisplay(
