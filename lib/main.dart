@@ -1,10 +1,13 @@
+// bloque 1
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'home_screen.dart';
+
+//bloque 2
 void main() {
   runApp(const MyApp());
 }
-
+//bloque 3
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -20,7 +23,7 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
+//bloque 4
 class MainScreen extends StatelessWidget {
   const MainScreen({super.key});
 
@@ -80,7 +83,7 @@ class MainScreen extends StatelessWidget {
     );
   }
 }
-
+//bloque 5
 class BackgroundGradient extends StatelessWidget {
   const BackgroundGradient({super.key});
 
@@ -101,7 +104,7 @@ class BackgroundGradient extends StatelessWidget {
     );
   }
 }
-
+//bloque 6
 class BlurOverlay extends StatelessWidget {
   const BlurOverlay({super.key});
 
@@ -121,14 +124,14 @@ class BlurOverlay extends StatelessWidget {
     );
   }
 }
-
+//bloque 7
 class GlowingStartButton extends StatefulWidget {
   const GlowingStartButton({super.key});
 
   @override
   State<GlowingStartButton> createState() => _GlowingStartButtonState();
 }
-
+//bloque 8
 class _GlowingStartButtonState extends State<GlowingStartButton>
     with SingleTickerProviderStateMixin {
   bool _pressed = false;
