@@ -23,116 +23,121 @@ import 'backend_service_daily_usage_mode.dart';
 │ Service layer – tracks usage continuously in the background                  │
 └──────────────────────────────────────────────────────────────────────────────*/
 class DailyUsageGoalManager {
-  // Singleton boilerplate
   static final DailyUsageGoalManager _instance = DailyUsageGoalManager._internal();
   factory DailyUsageGoalManager() => _instance;
   DailyUsageGoalManager._internal();
 
-  // Dependencies
   final UsageStorageService _usageService = UsageStorageService();
   final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
   final Screen _screen = Screen();
 
-  // Internal state
   StreamSubscription<ScreenStateEvent>? _screenSubscription;
   Timer? _countTimer;
   Duration _dailyLimit = const Duration(hours: 2);
   bool _isCounting = false;
-  bool _notificationSent = false;
   bool _initialized = false;
 
-  /*-------------------------------------------------------------------------*/
-  Future<void> start() async {
-    if (_initialized) return; // Ensure we only wire everything up once.
-    _initialized = true;
+  bool _halfwayNotified = false;
+  bool _fifteenLeftNotified = false;
+  bool _fiveLeftNotified = false;
+  bool _limitReachedNotified = false;
 
+  Future<void> start() async {
+    if (_initialized) return;
+    _initialized = true;
     await _initializeNotifications();
     await _loadStoredLimit();
     _listenToScreenEvents();
-    _startCounting(); // <–– start immediately so the counter works from launch
+    _startCounting();
   }
 
-  /*-------------------------------------------------------------------------*/
   Future<void> _initializeNotifications() async {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
     await _notificationsPlugin.initialize(initSettings);
   }
 
-  /*-------------------------------------------------------------------------*/
   Future<void> _loadStoredLimit() async {
     _dailyLimit = await _usageService.getDailyLimit();
   }
 
-  /*-------------------------------------------------------------------------*/
   void _listenToScreenEvents() {
     _screenSubscription = _screen.screenStateStream.listen((event) {
-      switch (event) {
-        case ScreenStateEvent.SCREEN_ON:
-          _startCounting();
-          break;
-        case ScreenStateEvent.SCREEN_OFF:
-          _stopCounting();
-          break;
-        default:
-          break;
+      if (event == ScreenStateEvent.SCREEN_ON) {
+        _startCounting();
+      } else if (event == ScreenStateEvent.SCREEN_OFF) {
+        _stopCounting();
       }
     });
   }
 
-  /*-------------------------------------------------------------------------*/
   void _startCounting() {
     if (_isCounting) return;
     _isCounting = true;
 
     _countTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       await _usageService.addUsage(const Duration(seconds: 1));
-
       final current = await _usageService.getDailyUsage();
-      if (!_notificationSent && current >= _dailyLimit) {
-        await _sendLimitReachedNotification();
-        _notificationSent = true;
+
+      if (!_halfwayNotified && current >= _dailyLimit * 0.5) {
+        _sendNotification('Halfway There', 'You’ve used half of your daily goal.');
+        _halfwayNotified = true;
+      }
+
+      final remaining = _dailyLimit - current;
+
+      if (!_fifteenLeftNotified && remaining.inMinutes <= 15 && remaining.inMinutes > 5) {
+        _sendNotification('Almost Done', 'Only 15 minutes left of your daily usage goal.');
+        _fifteenLeftNotified = true;
+      }
+
+      if (!_fiveLeftNotified && remaining.inMinutes <= 5 && remaining.inMinutes > 0) {
+        _sendNotification('5 Minutes Left', 'You’re almost at your limit. Just 5 minutes remaining.');
+        _fiveLeftNotified = true;
+      }
+
+      if (!_limitReachedNotified && current >= _dailyLimit) {
+        _sendNotification('Limit Reached', 'You have reached your daily usage goal.');
+        _limitReachedNotified = true;
       }
     });
   }
 
-  /*-------------------------------------------------------------------------*/
   void _stopCounting() {
     _isCounting = false;
     _countTimer?.cancel();
   }
 
-  /*-------------------------------------------------------------------------*/
-  Future<void> _sendLimitReachedNotification() async {
+  Future<void> _sendNotification(String title, String body) async {
     const androidDetails = AndroidNotificationDetails(
       'limit_channel',
-      'Daily Limit Reached',
-      channelDescription: 'Notifies when daily usage limit is reached',
+      'Daily Usage Alerts',
+      channelDescription: 'Notifies about your daily screen time progress',
       importance: Importance.high,
       priority: Priority.high,
     );
-
     const details = NotificationDetails(android: androidDetails);
-
-    await _notificationsPlugin.show(
-      0,
-      'Limit Reached',
-      'You have reached your daily usage goal.',
-      details,
-    );
+    await _notificationsPlugin.show(0, title, body, details);
   }
 
-  /*-------------------------------------------------------------------------*/
   Future<Duration> getCurrentUsage() => _usageService.getDailyUsage();
   Future<Duration> getDailyLimit() => _usageService.getDailyLimit();
 
   Future<void> updateDailyLimit(Duration newLimit) async {
     await _usageService.setDailyLimit(newLimit);
     _dailyLimit = newLimit;
-    _notificationSent = false; // Allow a fresh notification for the new day.
+    _halfwayNotified = false;
+    _fifteenLeftNotified = false;
+    _fiveLeftNotified = false;
+    _limitReachedNotified = false;
   }
 
-  void resetNotificationFlag() => _notificationSent = false;
+  void resetNotificationFlags() {
+    _halfwayNotified = false;
+    _fifteenLeftNotified = false;
+    _fiveLeftNotified = false;
+    _limitReachedNotified = false;
+  }
 }
 
 /*───────────────────────────────────────────────────────────────────────────────
@@ -146,35 +151,26 @@ class DailyUsageGoalScreen extends StatefulWidget {
 }
 
 class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
-  // References
   final DailyUsageGoalManager _manager = DailyUsageGoalManager();
 
-  // UI state
   Duration _dailyLimit = const Duration(hours: 2);
   Duration _currentUsage = Duration.zero;
-
-  // Polling timer – updates UI once per second
   Timer? _uiRefreshTimer;
 
-  /*-------------------------------------------------------------------------*/
   @override
   void initState() {
     super.initState();
-    _manager.start(); // Background tracker (no‑op if already started).
-    _syncData();      // Get the latest values immediately.
-
-    // Refresh UI every second to keep the progress indicator smooth.
+    _manager.start();
+    _syncData();
     _uiRefreshTimer = Timer.periodic(const Duration(seconds: 1), (_) => _syncData());
   }
 
-  /*-------------------------------------------------------------------------*/
   @override
   void dispose() {
     _uiRefreshTimer?.cancel();
     super.dispose();
   }
 
-  /*-------------------------------------------------------------------------*/
   Future<void> _syncData() async {
     final usage = await _manager.getCurrentUsage();
     final limit = await _manager.getDailyLimit();
@@ -186,7 +182,6 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
     }
   }
 
-  /*-------------------------------------------------------------------------*/
   void _openTimePicker() {
     showModalBottomSheet(
       context: context,
@@ -235,7 +230,6 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
     );
   }
 
-  /*-------------------------------------------------------------------------*/
   String _formatDuration(Duration d) {
     String two(int n) => n.toString().padLeft(2, '0');
     final h = two(d.inHours);
@@ -244,7 +238,6 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
     return '$h:$m:$s';
   }
 
-  /*-------------------------------------------------------------------------*/
   @override
   Widget build(BuildContext context) {
     final double percent = min(_currentUsage.inSeconds / _dailyLimit.inSeconds, 1.0);
