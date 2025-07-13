@@ -4,6 +4,9 @@ class UsageStorageService {
   static const String _dailyLimitKey = 'daily_limit_seconds';
   static const String _dailyUsageKey = 'daily_usage_seconds';
   static const String _lastResetDateKey = 'last_reset_date';
+  static const String _currentStreakKey = 'current_streak';
+  static const String _maxStreakKey = 'max_streak';
+  static const String _lastUsageDateKey = 'last_usage_date';
 
   /// Guarda el límite diario de uso del móvil en segundos
   Future<void> setDailyLimit(Duration limit) async {
@@ -40,7 +43,56 @@ class UsageStorageService {
     await prefs.setString(_lastResetDateKey, DateTime.now().toIso8601String());
   }
 
-  /// Comprueba si debe reiniciarse el contador diario (cuando ha pasado de día)
+  /// Guarda la última data d'ús registrada per al sistema de streaks
+  Future<void> setLastUsageDate(DateTime date) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastUsageDateKey, date.toIso8601String());
+  }
+
+  /// Recupera la darrera data d'ús
+  Future<DateTime?> getLastUsageDate() async {
+    final prefs = await SharedPreferences.getInstance();
+    final dateStr = prefs.getString(_lastUsageDateKey);
+    return dateStr != null ? DateTime.tryParse(dateStr) : null;
+  }
+
+  /// Guarda la ratxa actual de dies en què s'ha complert l'objectiu
+  Future<void> setCurrentStreak(int streak) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_currentStreakKey, streak);
+  }
+
+  /// Recupera la ratxa actual
+  Future<int> getCurrentStreak() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_currentStreakKey) ?? 0;
+  }
+
+  /// Guarda la ratxa màxima assolida
+  Future<void> setMaxStreak(int streak) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_maxStreakKey, streak);
+  }
+
+  /// Recupera la ratxa màxima
+  Future<int> getMaxStreak() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_maxStreakKey) ?? 0;
+  }
+
+  Future<Duration> getUsageForDate(DateTime date) async {
+  final prefs = await SharedPreferences.getInstance();
+  final now = DateTime.now();
+
+  if (_isSameDay(now, date)) {
+    await _maybeResetUsage(prefs);
+    return Duration(seconds: prefs.getInt(_dailyUsageKey) ?? 0);
+  }
+
+  return Duration.zero;
+  }
+
+  /// Comprova si cal reiniciar el comptador diari (quan ha passat de dia)
   Future<void> _maybeResetUsage(SharedPreferences prefs) async {
     final now = DateTime.now();
     final lastResetStr = prefs.getString(_lastResetDateKey);
@@ -55,8 +107,8 @@ class UsageStorageService {
     }
   }
 
-  /// Comprueba si dos fechas están en el mismo día natural
+  /// Comprova si dues dates són del mateix dia natural
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
-}
+} 

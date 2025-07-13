@@ -1,5 +1,5 @@
-// daily_usage_goal.dart
 // Refactor: Continuous background counting of screen‑on time
+// Streak system integration (current and max)
 // -----------------------------------------------------------------------------
 // This file contains two classes:
 //   1. DailyUsageGoalManager – singleton service that tracks screen‑on time in
@@ -16,11 +16,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:screen_state/screen_state.dart';
-
 import 'backend_service_daily_usage_mode.dart';
 
 /*───────────────────────────────────────────────────────────────────────────────
-│ Service layer – tracks usage continuously in the background                  │
+│ Service layer – tracks usage continuously in the background + streaks        │
 └──────────────────────────────────────────────────────────────────────────────*/
 class DailyUsageGoalManager {
   static final DailyUsageGoalManager _instance = DailyUsageGoalManager._internal();
@@ -42,11 +41,17 @@ class DailyUsageGoalManager {
   bool _fiveLeftNotified = false;
   bool _limitReachedNotified = false;
 
+  int _currentStreak = 0;
+  int _maxStreak = 0;
+  DateTime? _lastUsageDate;
+
   Future<void> start() async {
     if (_initialized) return;
     _initialized = true;
+
     await _initializeNotifications();
-    await _loadStoredLimit();
+    await _loadStoredData();
+    _checkStreakReset();
     _listenToScreenEvents();
     _startCounting();
   }
@@ -57,8 +62,11 @@ class DailyUsageGoalManager {
     await _notificationsPlugin.initialize(initSettings);
   }
 
-  Future<void> _loadStoredLimit() async {
+  Future<void> _loadStoredData() async {
     _dailyLimit = await _usageService.getDailyLimit();
+    _currentStreak = await _usageService.getCurrentStreak();
+    _maxStreak = await _usageService.getMaxStreak();
+    _lastUsageDate = await _usageService.getLastUsageDate();
   }
 
   void _listenToScreenEvents() {
@@ -100,6 +108,8 @@ class DailyUsageGoalManager {
         _sendNotification('Limit Reached', 'You have reached your daily usage goal.');
         _limitReachedNotified = true;
       }
+
+      _checkStreakUpdate();
     });
   }
 
@@ -120,16 +130,56 @@ class DailyUsageGoalManager {
     await _notificationsPlugin.show(0, title, body, details);
   }
 
+  Future<void> _checkStreakReset() async {
+    final today = DateTime.now();
+    final last = _lastUsageDate;
+
+    if (last == null) {
+      await _usageService.setLastUsageDate(today);
+      return;
+    }
+
+    final isNewDay = !_isSameDate(today, last);
+    if (isNewDay) {
+      final yesterday = today.subtract(const Duration(days: 1));
+      final yesterdayUsage = await _usageService.getUsageForDate(yesterday);
+
+      if (yesterdayUsage <= _dailyLimit) {
+        _currentStreak++;
+        if (_currentStreak > _maxStreak) {
+          _maxStreak = _currentStreak;
+          await _usageService.setMaxStreak(_maxStreak);
+        }
+      } else {
+        _currentStreak = 0;
+      }
+
+      await _usageService.setCurrentStreak(_currentStreak);
+      await _usageService.setLastUsageDate(today);
+    }
+  }
+
+  Future<void> _checkStreakUpdate() async {
+    final today = DateTime.now();
+    if (!_isSameDate(today, _lastUsageDate)) {
+      await _usageService.setLastUsageDate(today);
+    }
+  }
+
+  bool _isSameDate(DateTime a, DateTime? b) {
+    if (b == null) return false;
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
   Future<Duration> getCurrentUsage() => _usageService.getDailyUsage();
   Future<Duration> getDailyLimit() => _usageService.getDailyLimit();
+  Future<int> getCurrentStreak() async => _currentStreak;
+  Future<int> getMaxStreak() async => _maxStreak;
 
   Future<void> updateDailyLimit(Duration newLimit) async {
     await _usageService.setDailyLimit(newLimit);
     _dailyLimit = newLimit;
-    _halfwayNotified = false;
-    _fifteenLeftNotified = false;
-    _fiveLeftNotified = false;
-    _limitReachedNotified = false;
+    resetNotificationFlags();
   }
 
   void resetNotificationFlags() {
@@ -141,7 +191,7 @@ class DailyUsageGoalManager {
 }
 
 /*───────────────────────────────────────────────────────────────────────────────
-│ UI layer – visualises the tracked data                                       │
+│ UI layer – visualises the tracked data and streak                            │
 └──────────────────────────────────────────────────────────────────────────────*/
 class DailyUsageGoalScreen extends StatefulWidget {
   const DailyUsageGoalScreen({Key? key}) : super(key: key);
@@ -155,6 +205,8 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
 
   Duration _dailyLimit = const Duration(hours: 2);
   Duration _currentUsage = Duration.zero;
+  int _currentStreak = 0;
+  int _maxStreak = 0;
   Timer? _uiRefreshTimer;
 
   @override
@@ -174,10 +226,15 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
   Future<void> _syncData() async {
     final usage = await _manager.getCurrentUsage();
     final limit = await _manager.getDailyLimit();
+    final streak = await _manager.getCurrentStreak();
+    final maxStreak = await _manager.getMaxStreak();
+
     if (mounted) {
       setState(() {
         _currentUsage = usage;
         _dailyLimit = limit;
+        _currentStreak = streak;
+        _maxStreak = maxStreak;
       });
     }
   }
@@ -300,6 +357,21 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
                     ],
                   ),
                 ],
+              ),
+              const SizedBox(height: 20),
+              Text(
+                '🔥 Current streak: $_currentStreak days',
+                style: GoogleFonts.playfairDisplay(
+                  fontSize: 16,
+                  color: Colors.black87,
+                ),
+              ),
+              Text(
+                '🏆 Max streak: $_maxStreak days',
+                style: GoogleFonts.playfairDisplay(
+                  fontSize: 16,
+                  color: Colors.black54,
+                ),
               ),
               const SizedBox(height: 40),
               ElevatedButton(
