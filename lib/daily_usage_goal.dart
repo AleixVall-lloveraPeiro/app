@@ -1,13 +1,6 @@
-// Refactor: Continuous background counting of screen‑on time
-// Streak system integration (current and max)
 // -----------------------------------------------------------------------------
-// This file contains two classes:
-//   1. DailyUsageGoalManager – singleton service that tracks screen‑on time in
-//      the background and notifies when the daily limit is reached.
-//   2. DailyUsageGoalScreen – UI that visualises the data. It polls the manager
-//      every second, so the progress indicator and label update live.
+// daily_usage_goal.dart – Service + UI with robust streak handling at midnight
 // -----------------------------------------------------------------------------
-
 import 'dart:async';
 import 'dart:math';
 
@@ -16,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:screen_state/screen_state.dart';
+
 import 'backend_service_daily_usage_mode.dart';
 
 /*───────────────────────────────────────────────────────────────────────────────
@@ -36,22 +30,28 @@ class DailyUsageGoalManager {
   bool _isCounting = false;
   bool _initialized = false;
 
+  // Notification flags – reset at the start of every new day
   bool _halfwayNotified = false;
   bool _fifteenLeftNotified = false;
   bool _fiveLeftNotified = false;
   bool _limitReachedNotified = false;
 
+  // Cached streak values for quick access in the UI
   int _currentStreak = 0;
   int _maxStreak = 0;
-  DateTime? _lastUsageDate;
 
+  // Stores the calendar day we are currently counting for (year‑month‑day)
+  DateTime _currentDay = DateTime.now();
+
+  /*───────────────────────────────────────────────────────────────────────────*/
   Future<void> start() async {
     if (_initialized) return;
     _initialized = true;
 
     await _initializeNotifications();
     await _loadStoredData();
-    _checkStreakReset();
+    _currentDay = DateTime.now();
+
     _listenToScreenEvents();
     _startCounting();
   }
@@ -66,7 +66,6 @@ class DailyUsageGoalManager {
     _dailyLimit = await _usageService.getDailyLimit();
     _currentStreak = await _usageService.getCurrentStreak();
     _maxStreak = await _usageService.getMaxStreak();
-    _lastUsageDate = await _usageService.getLastUsageDate();
   }
 
   void _listenToScreenEvents() {
@@ -79,43 +78,65 @@ class DailyUsageGoalManager {
     });
   }
 
+  /*───────────────────────────────────────────────────────────────────────────
+  | Main 1‑second loop ‑ adds usage and handles notifications + day rollover |
+  ───────────────────────────────────────────────────────────────────────────*/
   void _startCounting() {
     if (_isCounting) return;
     _isCounting = true;
 
     _countTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      // 1) Persist one more second of usage. The storage layer will perform
+      //    a safe midnight rollover if the calendar has changed and will also
+      //    update the streak counters atomically.
       await _usageService.addUsage(const Duration(seconds: 1));
+
+      // 2) Pull the **current** usage for today (post‑rollover) – used for UI
       final current = await _usageService.getDailyUsage();
 
-      if (!_halfwayNotified && current >= _dailyLimit * 0.5) {
-        _sendNotification('Halfway There', 'You’ve used half of your daily goal.');
-        _halfwayNotified = true;
+      // 3) Send progressive notifications
+      _handleProgressNotifications(current);
+
+      // 4) Detect calendar day change (e.g., 00:00). If we entered a new day
+      //    we reset the local notification flags and refresh streak caches.
+      final now = DateTime.now();
+      if (!_isSameDate(now, _currentDay)) {
+        _currentDay = now;
+        resetNotificationFlags();
+        _currentStreak = await _usageService.getCurrentStreak();
+        _maxStreak = await _usageService.getMaxStreak();
       }
-
-      final remaining = _dailyLimit - current;
-
-      if (!_fifteenLeftNotified && remaining.inMinutes <= 15 && remaining.inMinutes > 5) {
-        _sendNotification('Almost Done', 'Only 15 minutes left of your daily usage goal.');
-        _fifteenLeftNotified = true;
-      }
-
-      if (!_fiveLeftNotified && remaining.inMinutes <= 5 && remaining.inMinutes > 0) {
-        _sendNotification('5 Minutes Left', 'You’re almost at your limit. Just 5 minutes remaining.');
-        _fiveLeftNotified = true;
-      }
-
-      if (!_limitReachedNotified && current >= _dailyLimit) {
-        _sendNotification('Limit Reached', 'You have reached your daily usage goal.');
-        _limitReachedNotified = true;
-      }
-
-      _checkStreakUpdate();
     });
   }
 
   void _stopCounting() {
     _isCounting = false;
     _countTimer?.cancel();
+  }
+
+  /*───────────────────────────────────────────────────────────────────────────*/
+  void _handleProgressNotifications(Duration current) {
+    if (!_halfwayNotified && current >= _dailyLimit * 0.5) {
+      _sendNotification('Halfway There', 'You’ve used half of your daily goal.');
+      _halfwayNotified = true;
+    }
+
+    final remaining = _dailyLimit - current;
+
+    if (!_fifteenLeftNotified && remaining.inMinutes <= 15 && remaining.inMinutes > 5) {
+      _sendNotification('Almost Done', 'Only 15 minutes left of your daily usage goal.');
+      _fifteenLeftNotified = true;
+    }
+
+    if (!_fiveLeftNotified && remaining.inMinutes <= 5 && remaining.inMinutes > 0) {
+      _sendNotification('5 Minutes Left', 'You’re almost at your limit. Just 5 minutes remaining.');
+      _fiveLeftNotified = true;
+    }
+
+    if (!_limitReachedNotified && current >= _dailyLimit) {
+      _sendNotification('Limit Reached', 'You have reached your daily usage goal.');
+      _limitReachedNotified = true;
+    }
   }
 
   Future<void> _sendNotification(String title, String body) async {
@@ -130,47 +151,13 @@ class DailyUsageGoalManager {
     await _notificationsPlugin.show(0, title, body, details);
   }
 
-  Future<void> _checkStreakReset() async {
-    final today = DateTime.now();
-    final last = _lastUsageDate;
+  /*───────────────────────────────────────────────────────────────────────────*/
+  bool _isSameDate(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
-    if (last == null) {
-      await _usageService.setLastUsageDate(today);
-      return;
-    }
-
-    final isNewDay = !_isSameDate(today, last);
-    if (isNewDay) {
-      final yesterday = today.subtract(const Duration(days: 1));
-      final yesterdayUsage = await _usageService.getUsageForDate(yesterday);
-
-      if (yesterdayUsage <= _dailyLimit) {
-        _currentStreak++;
-        if (_currentStreak > _maxStreak) {
-          _maxStreak = _currentStreak;
-          await _usageService.setMaxStreak(_maxStreak);
-        }
-      } else {
-        _currentStreak = 0;
-      }
-
-      await _usageService.setCurrentStreak(_currentStreak);
-      await _usageService.setLastUsageDate(today);
-    }
-  }
-
-  Future<void> _checkStreakUpdate() async {
-    final today = DateTime.now();
-    if (!_isSameDate(today, _lastUsageDate)) {
-      await _usageService.setLastUsageDate(today);
-    }
-  }
-
-  bool _isSameDate(DateTime a, DateTime? b) {
-    if (b == null) return false;
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
+  /*───────────────────────────────────────────────────────────────────────────
+  | Public API – exposed to the UI                                            |
+  ───────────────────────────────────────────────────────────────────────────*/
   Future<Duration> getCurrentUsage() => _usageService.getDailyUsage();
   Future<Duration> getDailyLimit() => _usageService.getDailyLimit();
   Future<int> getCurrentStreak() async => _currentStreak;
@@ -332,7 +319,7 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
                       value: percent,
                       strokeWidth: 14,
                       backgroundColor: Colors.blue.shade100,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blueAccent),
+                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.blueAccent),
                       strokeCap: StrokeCap.round,
                     ),
                   ),
