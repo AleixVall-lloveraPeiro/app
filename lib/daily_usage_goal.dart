@@ -9,8 +9,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:screen_state/screen_state.dart';
+import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 
 import 'backend_service_daily_usage_mode.dart';
+
+void backgroundCountCallback() async {
+  final service = UsageStorageService();
+  await service.addUsage(const Duration(seconds: 15));
+  print('[AlarmManager] Añadido 15s en segundo plano');
+
+}
 
 /*───────────────────────────────────────────────────────────────────────────────
 │ Service layer – tracks usage continuously in the background + streaks        │
@@ -45,16 +53,26 @@ class DailyUsageGoalManager {
 
   /*───────────────────────────────────────────────────────────────────────────*/
   Future<void> start() async {
-    if (_initialized) return;
-    _initialized = true;
+  if (_initialized) return;
+  _initialized = true;
 
-    await _initializeNotifications();
-    await _loadStoredData();
-    _currentDay = DateTime.now();
+  await _initializeNotifications();
+  await _loadStoredData();
+  _currentDay = DateTime.now();
 
-    _listenToScreenEvents();
-    _startCounting();
-  }
+  await AndroidAlarmManager.periodic(
+    const Duration(seconds: 15),
+    0,
+    backgroundCountCallback,
+    wakeup: true,
+    exact: true,
+    rescheduleOnReboot: true,
+  );
+
+  _listenToScreenEvents();
+  _startCounting(); // sigue contando en 1s si la app está abierta
+}
+
 
   Future<void> _initializeNotifications() async {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -181,7 +199,7 @@ class DailyUsageGoalManager {
 │ UI layer – visualises the tracked data and streak                            │
 └──────────────────────────────────────────────────────────────────────────────*/
 class DailyUsageGoalScreen extends StatefulWidget {
-  const DailyUsageGoalScreen({Key? key}) : super(key: key);
+  const DailyUsageGoalScreen({super.key});
 
   @override
   State<DailyUsageGoalScreen> createState() => _DailyUsageGoalScreenState();
