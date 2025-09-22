@@ -1,6 +1,4 @@
-// -----------------------------------------------------------------------------
-// daily_usage_goal.dart – Service + UI with robust streak handling at midnight
-// -----------------------------------------------------------------------------
+
 import 'dart:async';
 import 'dart:math';
 
@@ -16,13 +14,8 @@ import 'backend_service_daily_usage_mode.dart';
 void backgroundCountCallback() async {
   final service = UsageStorageService();
   await service.addUsage(const Duration(seconds: 15));
-  print('[AlarmManager] Añadido 15s en segundo plano');
-
 }
 
-/*───────────────────────────────────────────────────────────────────────────────
-│ Service layer – tracks usage continuously in the background + streaks        │
-└──────────────────────────────────────────────────────────────────────────────*/
 class DailyUsageGoalManager {
   static final DailyUsageGoalManager _instance = DailyUsageGoalManager._internal();
   factory DailyUsageGoalManager() => _instance;
@@ -38,20 +31,16 @@ class DailyUsageGoalManager {
   bool _isCounting = false;
   bool _initialized = false;
 
-  // Notification flags – reset at the start of every new day
   bool _halfwayNotified = false;
   bool _fifteenLeftNotified = false;
   bool _fiveLeftNotified = false;
   bool _limitReachedNotified = false;
 
-  // Cached streak values for quick access in the UI
   int _currentStreak = 0;
   int _maxStreak = 0;
 
-  // Stores the calendar day we are currently counting for (year‑month‑day)
   DateTime _currentDay = DateTime.now();
 
-  /*───────────────────────────────────────────────────────────────────────────*/
   Future<void> start() async {
   if (_initialized) return;
   _initialized = true;
@@ -70,7 +59,7 @@ class DailyUsageGoalManager {
   );
 
   _listenToScreenEvents();
-  _startCounting(); // sigue contando en 1s si la app está abierta
+  _startCounting();
 }
 
 
@@ -96,27 +85,15 @@ class DailyUsageGoalManager {
     });
   }
 
-  /*───────────────────────────────────────────────────────────────────────────
-  | Main 1‑second loop ‑ adds usage and handles notifications + day rollover |
-  ───────────────────────────────────────────────────────────────────────────*/
   void _startCounting() {
     if (_isCounting) return;
     _isCounting = true;
 
     _countTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      // 1) Persist one more second of usage. The storage layer will perform
-      //    a safe midnight rollover if the calendar has changed and will also
-      //    update the streak counters atomically.
       await _usageService.addUsage(const Duration(seconds: 1));
-
-      // 2) Pull the **current** usage for today (post‑rollover) – used for UI
       final current = await _usageService.getDailyUsage();
-
-      // 3) Send progressive notifications
       _handleProgressNotifications(current);
 
-      // 4) Detect calendar day change (e.g., 00:00). If we entered a new day
-      //    we reset the local notification flags and refresh streak caches.
       final now = DateTime.now();
       if (!_isSameDate(now, _currentDay)) {
         _currentDay = now;
@@ -132,7 +109,6 @@ class DailyUsageGoalManager {
     _countTimer?.cancel();
   }
 
-  /*───────────────────────────────────────────────────────────────────────────*/
   void _handleProgressNotifications(Duration current) {
     if (!_halfwayNotified && current >= _dailyLimit * 0.5) {
       _sendNotification('Halfway There', 'You’ve used half of your daily goal.');
@@ -169,13 +145,10 @@ class DailyUsageGoalManager {
     await _notificationsPlugin.show(0, title, body, details);
   }
 
-  /*───────────────────────────────────────────────────────────────────────────*/
   bool _isSameDate(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
-  /*───────────────────────────────────────────────────────────────────────────
-  | Public API – exposed to the UI                                            |
-  ───────────────────────────────────────────────────────────────────────────*/
+
   Future<Duration> getCurrentUsage() => _usageService.getDailyUsage();
   Future<Duration> getDailyLimit() => _usageService.getDailyLimit();
   Future<int> getCurrentStreak() async => _currentStreak;
@@ -195,9 +168,6 @@ class DailyUsageGoalManager {
   }
 }
 
-/*───────────────────────────────────────────────────────────────────────────────
-│ UI layer – visualises the tracked data and streak                            │
-└──────────────────────────────────────────────────────────────────────────────*/
 class DailyUsageGoalScreen extends StatefulWidget {
   const DailyUsageGoalScreen({super.key});
 
