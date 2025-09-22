@@ -1,21 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'home_screen.dart';
 
-void main() => runApp(MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  final prefs = await SharedPreferences.getInstance();
+  final bool hasAccess = prefs.getBool('usage_permission_granted') ?? false;
+
+  runApp(MyApp(initialScreen: hasAccess ? const HomeScreen() : const PermissionScreen()));
+}
 
 class MyApp extends StatelessWidget {
+  final Widget initialScreen;
+  const MyApp({super.key, required this.initialScreen});
+
   @override
-  Widget build(BuildContext context) => MaterialApp(home: HomePage());
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: initialScreen,
+    );
+  }
 }
 
-class HomePage extends StatefulWidget {
+class PermissionScreen extends StatefulWidget {
+  const PermissionScreen({super.key});
+
   @override
-  State<HomePage> createState() => _HomePageState();
+  State<PermissionScreen> createState() => _PermissionScreenState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _PermissionScreenState extends State<PermissionScreen> {
   static const platform = MethodChannel('aleix/usage');
-  String _text = 'Prem el botó per obtenir temps d\'ús';
+
+  @override
+  void initState() {
+    super.initState();
+    _checkPermissionLoop();
+  }
 
   Future<bool> checkUsagePermission() async {
     try {
@@ -26,61 +50,59 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> requestUsagePermission() async {
+  Future<void> _checkPermissionLoop() async {
+    bool granted = await checkUsagePermission();
+    if (granted) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('usage_permission_granted', true);
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+      );
+    } else {
+      Future.delayed(const Duration(seconds: 1), _checkPermissionLoop);
+    }
+  }
+
+  Future<void> _requestUsagePermission() async {
     try {
       await platform.invokeMethod('requestUsagePermission');
-    } on PlatformException {}
-  }
-
-  Future<Map<String, dynamic>?> getUsageStats(DateTime start, DateTime end) async {
-    try {
-      final res = await platform.invokeMethod('getUsageStats', {
-        'start': start.millisecondsSinceEpoch,
-        'end': end.millisecondsSinceEpoch,
-      });
-      return Map<String, dynamic>.from(res);
-    } on PlatformException {
-      return null;
+    } on PlatformException catch (e) {
+      debugPrint('Error requesting permission: $e');
     }
-  }
-
-  String formatDuration(Duration d) {
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60);
-    final s = d.inSeconds.remainder(60);
-    return '${h}h ${m}m ${s}s';
-  }
-
-  Future<void> _onGetUsage() async {
-    final has = await checkUsagePermission();
-    if (!has) {
-      // Obrir la pantalla de configuració perquè l'usuari ho activi
-      await requestUsagePermission();
-      setState(() => _text = 'Activa "Accés a l\'ús" per a la nostra app i torna a prémer el botó.');
-      return;
-    }
-
-    final now = DateTime.now();
-    final startOfDay = DateTime(now.year, now.month, now.day);
-    final stats = await getUsageStats(startOfDay, now);
-    if (stats == null) {
-      setState(() => _text = 'Error llegint les dades.');
-      return;
-    }
-
-    final totalMs = (stats['total'] ?? 0) as int;
-    final duration = Duration(milliseconds: totalMs);
-    setState(() => _text = 'Temps d\'ús (avui): ${formatDuration(duration)}');
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Detox - Temps d\'ús')),
-      body: Center(child: Text(_text, textAlign: TextAlign.center)),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _onGetUsage,
-        child: Icon(Icons.play_arrow),
+      backgroundColor: Colors.white,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.lock_clock, size: 80, color: Colors.blueAccent),
+              const SizedBox(height: 24),
+              const Text(
+                "Per poder mostrar el temps d'ús, cal que donis accés a l'ús del dispositiu.",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18, color: Colors.black87),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: _requestUsagePermission,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  backgroundColor: Colors.blueAccent,
+                ),
+                child: const Text('Concedir accés', style: TextStyle(fontSize: 16, color: Colors.white)),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
