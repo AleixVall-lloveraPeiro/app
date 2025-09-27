@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-          xmlns:tools="http://schemas.android.com/tools"
-          package="com.example.app">
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.example.app">
 
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
         android:name="${applicationName}"
@@ -34,10 +36,25 @@
             </intent-filter>
         </receiver>
 
+        <!-- ✅ NUEVO: Receiver para flutter_foreground_task (reinicio automático) -->
+        <receiver
+            android:name="com.pravera.flutter_foreground_task.receiver.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
             android:exported="true"
-            android:foregroundServiceType="dataSync">
+            android:foregroundServiceType="dataSync|phoneCall">
+            <!-- ✅ NUEVO: Intent filter para asegurar funcionamiento -->
+            <intent-filter>
+                <action android:name="com.pravera.flutter_foreground_task.service.ForegroundService" />
+            </intent-filter>
         </service>
 
         <!-- Actividad principal -->
@@ -50,6 +67,11 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
+
+            <!-- ✅ NUEVO: Meta-data para el foreground service -->
+            <meta-data
+                android:name="com.pravera.flutter_foreground_task.foreground_service_type"
+                android:value="dataSync|phoneCall" />
 
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
