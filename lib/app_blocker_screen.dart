@@ -68,10 +68,20 @@ class _AppBlockerScreenState extends State<AppBlockerScreen> {
   }
 
   Future<void> _saveSelections() async {
-    // Clear current blocked apps and add new selections
-    await _appBlocker.clearBlockedApps();
-    for (String packageName in _selectedApps) {
-      await _appBlocker.addBlockedApp(packageName);
+    final currentBlocked = _appBlocker.blockedApps;
+    final currentSettings = _appBlocker.blockedAppSettings;
+
+    // Remove deselected apps
+    for (final packageName in currentBlocked) {
+      if (!_selectedApps.contains(packageName)) {
+        await _appBlocker.removeBlockedApp(packageName);
+      }
+    }
+
+    // Add new or update existing apps, preserving old limit if it exists
+    for (final packageName in _selectedApps) {
+      final existingLimit = currentSettings[packageName];
+      await _appBlocker.addOrUpdateBlockedApp(packageName, existingLimit ?? 60); // Default to 60 minutes
     }
     
     ScaffoldMessenger.of(context).showSnackBar(

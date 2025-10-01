@@ -1,14 +1,18 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:usage_stats/usage_stats.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'blocking_overlay.dart';
 
 class AppBlocker {
   static final AppBlocker _instance = AppBlocker._internal();
   factory AppBlocker() => _instance;
   AppBlocker._internal();
 
-  List<String> _blockedApps = [];
+  Map<String, int> _blockedAppSettings = {}; // packageName -> limit in minutes
+  Set<String> _forceBlockedApps = {}; // Apps force-blocked by Focus Mode
   bool _isActive = false;
   final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
   
@@ -22,7 +26,7 @@ class AppBlocker {
 
   Future<void> initialize() async {
     await _initializeNotifications();
-    await _loadBlockedApps();
+    await _loadBlockedAppSettings();
     await _loadBlockerState();
     
     if (_isActive) {
@@ -40,9 +44,8 @@ class AppBlocker {
     _stopAppUsageTracking();
     
     _trackingTimer = Timer.periodic(Duration(seconds: 3), (timer) async {
-      if (!_isActive) return;
+      if (!_isActive && _forceBlockedApps.isEmpty) return; // Only track if active or force-blocking
       
-      // PROTECCIÓN: saltar durante periodo de notificación
       if (_isInNotificationPeriod) {
         print('[APP BLOCKER] Skipping tracking - in notification period');
         return;
@@ -61,21 +64,22 @@ class AppBlocker {
             validStats.sort((a, b) => b.lastTimeUsed!.compareTo(a.lastTimeUsed!));
             String currentApp = validStats.first.packageName!;
             
-            // DEBOUNCE INICIAL: solo cambiar si ha pasado suficiente tiempo
-            if (_blockedApps.contains(currentApp)) {
+            // Check for force-blocked apps first
+            if (_forceBlockedApps.contains(currentApp)) {
+              _triggerBlock(currentApp, isForced: true);
+              return;
+            }
+
+            if (_blockedAppSettings.containsKey(currentApp)) {
               if (currentApp != _currentBlockedApp) {
-                // NUEVA APP BLOQUEADA - esperar 5 segundos para confirmar
                 if (DateTime.now().difference(_lastAppChange).inSeconds > 5) {
                   _startBlockedAppTimer(currentApp);
                   _showImmediateNotification(currentApp);
                   _lastAppChange = DateTime.now();
                 }
               }
-              // Misma app bloqueada - timer sigue
             } else {
-              // APP NO BLOQUEADA - solo detener si estamos en una bloqueada
               if (_currentBlockedApp.isNotEmpty) {
-                // Esperar 8 segundos para confirmar que realmente salió
                 if (DateTime.now().difference(_lastAppChange).inSeconds > 8) {
                   _stopBlockedAppTimer();
                   _lastAppChange = DateTime.now();
@@ -100,8 +104,14 @@ class AppBlocker {
       _blockedAppSeconds++;
       print('[APP BLOCKER] $_currentBlockedApp: $_blockedAppSeconds seconds');
       
-      // NOTIFICAR CADA 5 MINUTOS
-      if (_blockedAppSeconds % 300 == 0) {
+      final limitInMinutes = _blockedAppSettings[_currentBlockedApp];
+      if (limitInMinutes != null && _blockedAppSeconds >= limitInMinutes * 60) {
+        _triggerBlock(_currentBlockedApp);
+        _stopBlockedAppTimer();
+        return;
+      }
+      
+      if (_blockedAppSeconds > 0 && _blockedAppSeconds % 300 == 0) {
         _showFiveMinuteNotification();
       }
     });
@@ -142,7 +152,6 @@ class AppBlocker {
   }
 
   Future<void> _showFiveMinuteNotification() async {
-    // ACTIVAR PROTECCIÓN durante 10 segundos después de notificación
     _isInNotificationPeriod = true;
     
     String appName = _getAppName(_currentBlockedApp);
@@ -158,13 +167,12 @@ class AppBlocker {
     await _notificationsPlugin.show(
       DateTime.now().millisecondsSinceEpoch.remainder(100000),
       'Mindful Break 🌱',
-      'You\'ve been using $appName for $minutes minutes.',
+      "You've been using $appName for $minutes minutes.",
       const NotificationDetails(android: androidDetails),
     );
     
     print('[APP BLOCKER] $minutes-minute notification for: $appName');
     
-    // DESACTIVAR PROTECCIÓN después de 10 segundos
     Timer(Duration(seconds: 10), () {
       _isInNotificationPeriod = false;
       print('[APP BLOCKER] Notification period ended');
@@ -180,9 +188,14 @@ class AppBlocker {
     }
   }
 
-  Future<void> _loadBlockedApps() async {
+  Future<void> _loadBlockedAppSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    _blockedApps = prefs.getStringList('blockedApps') ?? [];
+    final jsonString = prefs.getString('blockedAppSettings');
+    if (jsonString != null) {
+      _blockedAppSettings = Map<String, int>.from(json.decode(jsonString));
+    } else {
+      _blockedAppSettings = {};
+    }
   }
 
   Future<void> _loadBlockerState() async {
@@ -190,9 +203,10 @@ class AppBlocker {
     _isActive = prefs.getBool('appBlockerActive') ?? false;
   }
 
-  Future<void> _saveBlockedApps() async {
+  Future<void> _saveBlockedAppSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('blockedApps', _blockedApps);
+    final jsonString = json.encode(_blockedAppSettings);
+    await prefs.setString('blockedAppSettings', jsonString);
   }
 
   Future<void> _saveBlockerState() async {
@@ -200,36 +214,49 @@ class AppBlocker {
     await prefs.setBool('appBlockerActive', _isActive);
   }
 
-  bool isAppBlocked(String packageName) => _isActive && _blockedApps.contains(packageName);
-  List<String> get blockedApps => List.from(_blockedApps);
+  bool isAppBlocked(String packageName) => _isActive && _blockedAppSettings.containsKey(packageName);
+  List<String> get blockedApps => _blockedAppSettings.keys.toList();
+  Map<String, int> get blockedAppSettings => Map.from(_blockedAppSettings);
   bool get isActive => _isActive;
 
+  // Method to force block an app (used by Focus Mode)
+  void forceBlockApp(String packageName) {
+    _forceBlockedApps.add(packageName);
+    _triggerBlock(packageName, isForced: true);
+  }
+
+  // Method to unblock a force-blocked app
+  void forceUnblockApp(String packageName) {
+    _forceBlockedApps.remove(packageName);
+    FlutterForegroundTask.minimizeApp(); // Minimize if the blocked app is currently active
+  }
+
+  // Re-added methods
   Future<void> toggleBlocker(bool active) async {
     _isActive = active;
     await _saveBlockerState();
     
     if (active) {
       _startAppUsageTracking();
-    } else {
+    }
+    else {
       _stopAppUsageTracking();
     }
   }
 
-  Future<void> addBlockedApp(String packageName) async {
-    if (!_blockedApps.contains(packageName)) {
-      _blockedApps.add(packageName);
-      await _saveBlockedApps();
-    }
+  Future<void> addOrUpdateBlockedApp(String packageName, int limitInMinutes) async {
+    _blockedAppSettings[packageName] = limitInMinutes;
+    await _saveBlockedAppSettings();
   }
 
   Future<void> removeBlockedApp(String packageName) async {
-    _blockedApps.remove(packageName);
-    await _saveBlockedApps();
+    _blockedAppSettings.remove(packageName);
+    await _saveBlockedAppSettings();
   }
 
-  Future<void> clearBlockedApps() async {
-    _blockedApps.clear();
-    await _saveBlockedApps();
+  void _triggerBlock(String packageName, {bool isForced = false}) {
+    print('[APP BLOCKER] TRIGGERING BLOCK FOR: $packageName (Forced: $isForced)');
+    FlutterForegroundTask.launchApp('/blockingOverlay');
   }
 
   void dispose() {
