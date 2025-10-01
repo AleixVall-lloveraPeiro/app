@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:device_apps/device_apps.dart';
+import 'app_blocker.dart';
 
 class PomodoroMode {
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
+
+  List<String> _blockedAppsByPomodoro = [];
 
   final ValueNotifier<Duration> timeLeft = ValueNotifier(const Duration(minutes: 25));
   final ValueNotifier<bool> isWorking = ValueNotifier(true);
@@ -49,9 +53,27 @@ class PomodoroMode {
     await _notificationsPlugin.show(0, title, body, notificationDetails);
   }
 
-  void start() {
+  void start() async {
     if (isRunning.value) return;
     isRunning.value = true;
+
+    // Block all apps except the phone app
+    _blockedAppsByPomodoro.clear();
+    List<Application> apps = await DeviceApps.getInstalledApplications(
+      includeAppIcons: false,
+      includeSystemApps: true,
+      onlyAppsWithLaunchIntent: true,
+    );
+
+    const String phoneAppPackageName = "com.android.dialer"; // Placeholder for phone app
+
+    for (Application app in apps) {
+      if (app.packageName != phoneAppPackageName) {
+        AppBlocker().forceBlockApp(app.packageName);
+        _blockedAppsByPomodoro.add(app.packageName);
+      }
+    }
+
     _startSession();
   }
 
@@ -97,5 +119,11 @@ class PomodoroMode {
     timeLeft.value = workDuration;
     isWorking.value = true;
     completedCycles.value = 0;
+
+    // Unblock all apps that were blocked by Pomodoro
+    for (String packageName in _blockedAppsByPomodoro) {
+      AppBlocker().forceUnblockApp(packageName);
+    }
+    _blockedAppsByPomodoro.clear();
   }
 }

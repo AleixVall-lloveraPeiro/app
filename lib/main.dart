@@ -9,7 +9,7 @@ void main() async {
   final prefs = await SharedPreferences.getInstance();
   final bool hasAccess = prefs.getBool('usage_permission_granted') ?? false;
 
-  runApp(MyApp(initialScreen: hasAccess ? const HomeScreen() : const PermissionScreen()));
+  runApp(MyApp(initialScreen: hasAccess ? HomeScreen() : const PermissionScreen()));
 }
 
 class MyApp extends StatelessWidget {
@@ -58,7 +58,7 @@ class _PermissionScreenState extends State<PermissionScreen> {
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => HomeScreen()),
       );
     } else {
       Future.delayed(const Duration(seconds: 1), _checkPermissionLoop);
