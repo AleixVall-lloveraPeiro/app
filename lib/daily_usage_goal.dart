@@ -67,25 +67,40 @@ class DailyUsageGoalManager {
     final now = DateTime.now();
     final lastResetStr = prefs.getString(_lastResetDateKey);
     
-    if (lastResetStr == null) {
-      await prefs.setString(_lastResetDateKey, now.toIso8601String());
-      _currentUsage = Duration.zero;
-      await _saveCachedUsage();
-      return;
+    DateTime? lastResetDate;
+    if (lastResetStr != null) {
+      lastResetDate = DateTime.tryParse(lastResetStr);
     }
-    
-    final lastReset = DateTime.tryParse(lastResetStr);
-    if (lastReset == null || !_isSameDay(now, lastReset)) {
-      _currentUsage = Duration.zero;
-      _resetNotificationFlags();
-      await prefs.setString(_lastResetDateKey, now.toIso8601String());
-      await _saveCachedUsage();
+
+    // If it's a new calendar day or the last reset date is missing, perform a reset.
+    // This handles cases where the app might not have been running when the alarm fired.
+    if (lastResetDate == null || !_isSameCalendarDay(now, lastResetDate)) {
+      await resetDailyUsage();
     } else {
       await _loadCachedUsage();
     }
   }
 
-  bool _isSameDay(DateTime a, DateTime b) {
+  /// Resets the daily usage statistics to zero.
+  ///
+  /// This method is typically called by a scheduled background task (e.g., via `android_alarm_manager_plus`)
+  /// at midnight to ensure the daily usage goal is reset for the new day.
+  /// It also resets all notification flags and updates the last reset date.
+  Future<void> resetDailyUsage() async {
+    _currentUsage = Duration.zero;
+    _resetNotificationFlags();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastResetDateKey, DateTime.now().toIso8601String());
+    await _saveCachedUsage();
+    _usageStreamController.add(_currentUsage);
+  }
+
+  /// Checks if two [DateTime] objects fall on the same calendar day (year, month, and day).
+  ///
+  /// [a] The first [DateTime] to compare.
+  /// [b] The second [DateTime] to compare.
+  /// Returns `true` if both [DateTime]s are on the same calendar day, `false` otherwise.
+  bool _isSameCalendarDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
