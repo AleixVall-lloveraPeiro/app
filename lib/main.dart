@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:flutter_foreground_task/models/foreground_task_event_action.dart';
 import 'home_screen.dart';
 import 'daily_usage_goal.dart'; // Import DailyUsageGoalManager
+import 'inspirational_blocking_overlay.dart';
 
 /// Top-level function to be executed by the alarm manager for daily usage reset.
 ///
@@ -28,10 +31,14 @@ void main() async {
   // Initialize Android Alarm Manager
   await AndroidAlarmManager.initialize();
 
+  _initForegroundTask();
+
+  FlutterForegroundTask.setTaskHandler(MyTaskHandler());
+
   final prefs = await SharedPreferences.getInstance();
   final bool hasAccess = prefs.getBool('usage_permission_granted') ?? false;
 
-  runApp(MyApp(initialScreen: hasAccess ? HomeScreen() : const PermissionScreen()));
+  runApp(MyApp(initialRoute: hasAccess ? '/' : '/permission'));
 
   // Schedule daily usage reset at midnight (00:00)
   await AndroidAlarmManager.periodic(
@@ -44,24 +51,78 @@ void main() async {
   );
 }
 
+void _initForegroundTask() {
+  FlutterForegroundTask.init(
+    androidNotificationOptions: AndroidNotificationOptions(
+      channelId: 'notification_channel_id',
+      channelName: 'Foreground Service Notification',
+      channelDescription: 'This notification appears when a foreground service is running.',
+      channelImportance: NotificationChannelImportance.LOW,
+      priority: NotificationPriority.LOW,
+    ),
+    iosNotificationOptions: const IOSNotificationOptions(
+      showNotification: true,
+      playSound: false,
+    ),
+    foregroundTaskOptions: ForegroundTaskOptions(
+      autoRunOnBoot: true,
+      allowWifiLock: true,
+      eventAction: ForegroundTaskEventAction.repeat(5000),
+    ),
+  );
+}
+
+class MyTaskHandler extends TaskHandler {
+  @override
+  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    // You can use the starter to start a foreground task.
+  }
+
+  @override
+  Future<void> onStartCommand(DateTime timestamp, Map<String, dynamic>? data) async {
+    final String? launchData = data?['launchData'];
+    if (launchData != null) {
+      navigatorKey.currentState?.pushNamed(launchData);
+    }
+  }
+
+  @override
+  Future<void> onRepeatEvent(DateTime timestamp) async {
+    // Handle repeat events if needed
+  }
+
+  @override
+  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
+    // Handle destroy events if needed
+  }
+}
+
 /// The root widget of the application.
 ///
 /// This widget sets up the [MaterialApp] and determines the initial screen
 /// based on whether usage permissions have been granted.
+final navigatorKey = GlobalKey<NavigatorState>();
+
 class MyApp extends StatelessWidget {
   /// The widget to display as the initial screen.
-  final Widget initialScreen;
+  final String initialRoute;
 
   /// Creates a [MyApp] widget.
   ///
   /// [initialScreen] is required and will be the first screen shown to the user.
-  const MyApp({super.key, required this.initialScreen});
+  const MyApp({super.key, required this.initialRoute});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
-      home: initialScreen,
+      initialRoute: initialRoute,
+      routes: {
+        '/': (context) => const HomeScreen(),
+        '/permission': (context) => const PermissionScreen(),
+        '/inspirationalBlockingOverlay': (context) => const InspirationalBlockingOverlay(),
+      },
     );
   }
 }
@@ -88,7 +149,26 @@ class _PermissionScreenState extends State<PermissionScreen> {
   @override
   void initState() {
     super.initState();
-    _checkPermissionLoop();
+  }
+
+  Future<void> _handlePermissionRequest() async {
+    await _requestUsagePermission();
+    bool granted = await checkUsagePermission();
+    if (granted) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('usage_permission_granted', true);
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => HomeScreen()),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Permission not granted. The app needs usage access to function correctly.'),
+        ),
+      );
+    }
   }
 
   /// Checks if the application has been granted usage access permission.
@@ -108,20 +188,7 @@ class _PermissionScreenState extends State<PermissionScreen> {
   /// Once permission is granted, it saves the permission status and navigates
 /// the user to the [HomeScreen]. If permission is not granted, it retries
 /// after a short delay.
-  Future<void> _checkPermissionLoop() async {
-    bool granted = await checkUsagePermission();
-    if (granted) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('usage_permission_granted', true);
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => HomeScreen()),
-      );
-    } else {
-      Future.delayed(const Duration(seconds: 1), _checkPermissionLoop);
-    }
-  }
+
 
   /// Requests usage access permission from the user.
   ///
@@ -154,7 +221,7 @@ class _PermissionScreenState extends State<PermissionScreen> {
               ),
               const SizedBox(height: 24),
               ElevatedButton(
-                onPressed: _requestUsagePermission,
+                onPressed: _handlePermissionRequest,
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

@@ -16,6 +16,7 @@ class _AppBlockerScreenState extends State<AppBlockerScreen> {
   List<Application> _installedApps = [];
   List<String> _selectedApps = [];
   bool _isLoading = true;
+  bool _isBlockerActive = false;
 
   @override
   void initState() {
@@ -28,6 +29,7 @@ class _AppBlockerScreenState extends State<AppBlockerScreen> {
     await _getInstalledApps();
     setState(() {
       _selectedApps = List.from(_appBlocker.blockedApps); // Create a copy
+      _isBlockerActive = _appBlocker.isActive;
       _isLoading = false;
     });
   }
@@ -69,7 +71,6 @@ class _AppBlockerScreenState extends State<AppBlockerScreen> {
 
   Future<void> _saveSelections() async {
     final currentBlocked = _appBlocker.blockedApps;
-    final currentSettings = _appBlocker.blockedAppSettings;
 
     // Remove deselected apps
     for (final packageName in currentBlocked) {
@@ -78,10 +79,11 @@ class _AppBlockerScreenState extends State<AppBlockerScreen> {
       }
     }
 
-    // Add new or update existing apps, preserving old limit if it exists
+    // Add new apps
     for (final packageName in _selectedApps) {
-      final existingLimit = currentSettings[packageName];
-      await _appBlocker.addOrUpdateBlockedApp(packageName, existingLimit ?? 60); // Default to 60 minutes
+      if (!currentBlocked.contains(packageName)) {
+        await _appBlocker.addBlockedApp(packageName);
+      }
     }
     
     ScaffoldMessenger.of(context).showSnackBar(
@@ -128,18 +130,22 @@ class _AppBlockerScreenState extends State<AppBlockerScreen> {
                   padding: EdgeInsets.all(20),
                   child: Column(
                     children: [
-                      Text(
-                        'Select apps to block',
-                        style: GoogleFonts.playfairDisplay(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                      SwitchListTile(
+                        title: Text(
+                          'App Blocker',
+                          style: GoogleFonts.playfairDisplay(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'When app blocker is active, you\'ll get mindful notifications when opening these apps',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.black54),
+                        subtitle: Text('Enable or disable the app blocker'),
+                        value: _isBlockerActive,
+                        onChanged: (value) {
+                          setState(() {
+                            _isBlockerActive = value;
+                          });
+                          _appBlocker.toggleBlocker(value);
+                        },
                       ),
                       SizedBox(height: 16),
                       Row(

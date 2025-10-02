@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:screen_state/screen_state.dart';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class MindfulUsageMode {
@@ -35,9 +34,6 @@ class MindfulUsageMode {
     // Save state to persistent storage
     await _saveRunningState(true);
     
-    // Start foreground service
-    await _startForegroundService();
-    
     _listenToScreenEvents();
     _startCounting();
     _isRunning = true;
@@ -54,8 +50,6 @@ class MindfulUsageMode {
     // Save state to persistent storage
     await _saveRunningState(false);
     
-    // Stop foreground service
-    await FlutterForegroundTask.stopService();
     print('[MINDFUL] Mindful Usage Mode stopped');
   }
 
@@ -69,16 +63,7 @@ class MindfulUsageMode {
     return prefs.getBool('mindfulModeRunning') ?? false;
   }
 
-  Future<void> _startForegroundService() async {
-    print('[MINDFUL] Starting foreground service...');
-    
-    await FlutterForegroundTask.startService(
-      notificationTitle: 'Mindful Usage Mode Active',
-      notificationText: 'Tracking your screen time',
-    );
-    
-    print('[MINDFUL] Foreground service started');
-  }
+
 
   // ... rest of your methods remain exactly the same ...
 

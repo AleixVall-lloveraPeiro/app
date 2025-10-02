@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:screen_state/screen_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class DailyUsageGoalManager {
@@ -21,8 +22,15 @@ class DailyUsageGoalManager {
   static const String _maxStreakKey = 'max_streak';
   static const String _cachedUsageKey = 'cached_daily_usage';
 
-  // Notifications
+  // Notification IDs
+  static const int _halfwayNotificationId = 100;
+  static const int _fifteenLeftNotificationId = 101;
+  static const int _fiveLeftNotificationId = 102;
+  static const int _limitReachedNotificationId = 103;
   final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
+  final Screen _screen = Screen();
+  StreamSubscription<ScreenStateEvent>? _screenSubscription;
+  Timer? _usageTimer;
 
   // State variables
   Duration _dailyLimit = const Duration(hours: 2);
@@ -42,7 +50,29 @@ class DailyUsageGoalManager {
     await _checkAndResetDailyUsage();
     await _updateCurrentUsage();
     
-    Timer.periodic(const Duration(milliseconds: 10), (_) => _updateCurrentUsage());
+    _listenToScreenEvents();
+    _startUsageTimer(); // Assume screen is on at startup
+  }
+
+  void _listenToScreenEvents() {
+    _screenSubscription = _screen.screenStateStream?.listen((event) {
+      if (event == ScreenStateEvent.SCREEN_ON) {
+        _startUsageTimer();
+      } else if (event == ScreenStateEvent.SCREEN_OFF) {
+        _stopUsageTimer();
+      }
+    });
+  }
+
+  void _startUsageTimer() {
+    _usageTimer?.cancel(); // Ensure no multiple timers are running
+    _usageTimer = Timer.periodic(const Duration(seconds: 30), (_) { // Reduced frequency
+      _updateCurrentUsage();
+    });
+  }
+
+  void _stopUsageTimer() {
+    _usageTimer?.cancel();
   }
 
   Future<void> _initializeNotifications() async {
@@ -102,6 +132,10 @@ class DailyUsageGoalManager {
   /// Returns `true` if both [DateTime]s are on the same calendar day, `false` otherwise.
   bool _isSameCalendarDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  Future<void> updateUsage() async {
+    await _updateCurrentUsage();
   }
 
   Future<void> _updateCurrentUsage() async {
@@ -180,27 +214,27 @@ class DailyUsageGoalManager {
     final remaining = _dailyLimit - current;
 
     if (!_halfwayNotified && current >= _dailyLimit * 0.5) {
-      _sendNotification('Halfway There', 'You\'ve used half of your daily goal.');
+      _sendNotification(_halfwayNotificationId, 'Halfway There', 'You\'ve used half of your daily goal.');
       _halfwayNotified = true;
     }
 
     if (!_fifteenLeftNotified && remaining.inMinutes <= 15 && remaining.inMinutes > 5) {
-      _sendNotification('Almost Done', 'Only 15 minutes left of your daily usage goal.');
+      _sendNotification(_fifteenLeftNotificationId, 'Almost Done', 'Only 15 minutes left of your daily usage goal.');
       _fifteenLeftNotified = true;
     }
 
     if (!_fiveLeftNotified && remaining.inMinutes <= 5 && remaining.inMinutes > 0) {
-      _sendNotification('5 Minutes Left', 'Just 5 minutes remaining.');
+      _sendNotification(_fiveLeftNotificationId, '5 Minutes Left', 'Just 5 minutes remaining.');
       _fiveLeftNotified = true;
     }
 
     if (!_limitReachedNotified && current >= _dailyLimit) {
-      _sendNotification('Limit Reached', 'You have reached your daily usage goal.');
+      _sendNotification(_limitReachedNotificationId, 'Limit Reached', 'You have reached your daily usage goal.');
       _limitReachedNotified = true;
     }
   }
 
-  Future<void> _sendNotification(String title, String body) async {
+  Future<void> _sendNotification(int id, String title, String body) async {
     const androidDetails = AndroidNotificationDetails(
       'limit_channel',
       'Daily Usage Alerts',
@@ -210,7 +244,7 @@ class DailyUsageGoalManager {
     );
     const details = NotificationDetails(android: androidDetails);
     await _notificationsPlugin.show(
-      Random().nextInt(1000),
+      id,
       title, 
       body, 
       details

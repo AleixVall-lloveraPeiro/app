@@ -50,6 +50,8 @@ class _FocusModeScreenState extends State<FocusModeScreen> {
   }
 
   void _showAppSelectionAndDurationPicker() {
+    bool isPomodoro = false;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -62,36 +64,47 @@ class _FocusModeScreenState extends State<FocusModeScreen> {
               child: Column(
                 children: [
                   Text(
-                    'Select Focus Duration',
+                    'Configure Focus Session',
                     style: GoogleFonts.playfairDisplay(
                       fontSize: 22, fontWeight: FontWeight.bold),
                   ),
                   SizedBox(height: 16),
-                  SizedBox(
-                    height: 100,
-                    child: ListWheelScrollView.useDelegate(
-                      itemExtent: 50,
-                      perspective: 0.005,
-                      diameterRatio: 1.2,
-                      onSelectedItemChanged: (index) {
-                        setModalState(() {
-                          _selectedDuration = Duration(minutes: (index + 1) * 5);
-                        });
-                      },
-                      childDelegate: ListWheelChildBuilderDelegate(
-                        builder: (context, index) {
-                          final minutes = (index + 1) * 5;
-                          return Center(
-                            child: Text(
-                              '$minutes minutes',
-                              style: GoogleFonts.playfairDisplay(fontSize: 20),
-                            ),
-                          );
+                  SwitchListTile(
+                    title: Text('Pomodoro Mode'),
+                    subtitle: Text('Work in 25-min cycles with 5-min breaks'),
+                    value: isPomodoro,
+                    onChanged: (value) {
+                      setModalState(() {
+                        isPomodoro = value;
+                      });
+                    },
+                  ),
+                  if (!isPomodoro)
+                    SizedBox(
+                      height: 100,
+                      child: ListWheelScrollView.useDelegate(
+                        itemExtent: 50,
+                        perspective: 0.005,
+                        diameterRatio: 1.2,
+                        onSelectedItemChanged: (index) {
+                          setModalState(() {
+                            _selectedDuration = Duration(minutes: (index + 1) * 5);
+                          });
                         },
-                        childCount: 24, // Up to 2 hours
+                        childDelegate: ListWheelChildBuilderDelegate(
+                          builder: (context, index) {
+                            final minutes = (index + 1) * 5;
+                            return Center(
+                              child: Text(
+                                '$minutes minutes',
+                                style: GoogleFonts.playfairDisplay(fontSize: 20),
+                              ),
+                            );
+                          },
+                          childCount: 24, // Up to 2 hours
+                        ),
                       ),
                     ),
-                  ),
                   SizedBox(height: 24),
                   Text(
                     'Select Apps to Block (Optional)',
@@ -134,6 +147,7 @@ class _FocusModeScreenState extends State<FocusModeScreen> {
                       widget.focusMode.start(
                         _selectedDuration,
                         appsToBlock: _selectedAppsToBlock,
+                        isPomodoro: isPomodoro,
                       );
                     },
                     child: const Text('Start Focusing'),
@@ -163,12 +177,30 @@ class _FocusModeScreenState extends State<FocusModeScreen> {
               return Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  ValueListenableBuilder<bool>(
+                    valueListenable: widget.focusMode.isWorking,
+                    builder: (context, isWorking, child) {
+                      return Text(
+                        isWorking ? 'Work Time' : 'Break Time',
+                        style: GoogleFonts.playfairDisplay(fontSize: 32, fontWeight: FontWeight.w700),
+                      );
+                    },
+                  ),
                   ValueListenableBuilder<Duration>(
                     valueListenable: widget.focusMode.timeLeft,
                     builder: (context, timeLeft, child) {
                       return Text(
                         _formatDuration(timeLeft),
                         style: GoogleFonts.playfairDisplay(fontSize: 60, fontWeight: FontWeight.bold),
+                      );
+                    },
+                  ),
+                  ValueListenableBuilder<int>(
+                    valueListenable: widget.focusMode.completedCycles,
+                    builder: (context, completedCycles, child) {
+                      return Text(
+                        'Completed Cycles: $completedCycles',
+                        style: GoogleFonts.playfairDisplay(fontSize: 18),
                       );
                     },
                   ),

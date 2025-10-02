@@ -3,8 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'mindful_usage_mode.dart';
-import 'pomodoro_mode.dart';
-import 'pomodoro_screen.dart';
+import 'focus_mode.dart';
+import 'focus_mode_screen.dart';
 import 'daily_usage_goal.dart';
 import 'app_blocker_screen.dart';
 import 'app_blocker.dart';
@@ -26,7 +26,7 @@ class HomeScreen extends StatefulWidget {
 ///
 /// Manages the state and logic for various modes, including mindful mode and
 /// app blocker, and handles UI animations and navigation.
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   /// Indicates whether Mindful Usage Mode is currently active.
   bool isMindfulModeOn = false;
 
@@ -36,8 +36,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// Instance of [MindfulUsageMode] to control mindful usage features.
   final MindfulUsageMode mindfulUsageMode = MindfulUsageMode();
 
-  /// Instance of [PomodoroMode] to manage Pomodoro timer functionality.
-  final PomodoroMode pomodoroMode = PomodoroMode();
+  /// Instance of [FocusMode] to manage focus sessions.
+  final FocusMode focusMode = FocusMode();
 
   /// Instance of [AppBlocker] to control app blocking features.
   final AppBlocker appBlocker = AppBlocker();
@@ -61,7 +61,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     
     _loadMindfulModeState();
     _loadAppBlockerState();
+    WidgetsBinding.instance.addObserver(this);
   }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      DailyUsageGoalManager().updateUsage();
+    }
+  }
+
+  /// Loads the saved state of the Mindful Usage Mode from shared preferences.
   
   /// Loads the saved state of the Mindful Usage Mode from shared preferences.
   ///
@@ -98,9 +108,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     mindfulUsageMode.stop();
-    pomodoroMode.stop();
+    focusMode.dispose();
     appBlocker.dispose();
     _playController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -196,102 +207,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  /// Toggles the App Blocker mode on or off.
-  ///
-  /// If turning off, it displays a confirmation dialog to the user.
-  /// If turning on, it activates the app blocker and shows a success message.
-  void _toggleAppBlocker() {
-    if (isAppBlockerOn) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            backgroundColor: Colors.white,
-            title: Text(
-              'Turn off App Blocker?',
-              style: GoogleFonts.playfairDisplay(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-            content: Text(
-              'You\'ll be able to access all apps without mindful pauses. Are you sure?',
-              style: GoogleFonts.playfairDisplay(
-                fontSize: 16,
-                color: Colors.black54,
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-                child: Text(
-                  'Cancel',
-                  style: GoogleFonts.playfairDisplay(
-                    fontSize: 16,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    isAppBlockerOn = false;
-                    appBlocker.toggleBlocker(false);
-                  });
-                  Navigator.of(context).pop();
-                },
-                child: Text(
-                  'Yes, turn off',
-                  style: GoogleFonts.playfairDisplay(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.redAccent,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      );
-    } else {
-      setState(() {
-        isAppBlockerOn = true;
-        appBlocker.toggleBlocker(true);
-      });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'App Blocker activated 🛡️',
-            style: GoogleFonts.playfairDisplay(
-              fontSize: 16,
-              color: Colors.white,
-            ),
-          ),
-          backgroundColor: Color(0xFFFF6B6B),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-  }
 
-  /// Navigates to the [PomodoroScreen] to start a Pomodoro focus session.
-  void _startPomodoro() {
+  /// Navigates to the [FocusModeScreen] to start a focus session.
+  void _startFocusMode() {
     Navigator.push(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => PomodoroScreen(pomodoroMode: pomodoroMode),
+        pageBuilder: (_, __, ___) => FocusModeScreen(focusMode: focusMode),
         transitionDuration: const Duration(milliseconds: 600),
         transitionsBuilder: (_, anim, __, child) {
           return FadeTransition(
@@ -353,18 +276,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ),
             const SizedBox(height: 24),
-            // APP BLOCKER MODE SWITCH - MOVED TO TOP
-            _buildOptionSwitch(
-              context,
-              title: 'App Blocker Mode',
-              subtitle: 'Get mindful notifications when opening distracting apps.',
-              icon: Icons.block,
-              color: const Color(0xFFFF6B6B),
-              isActive: isAppBlockerOn,
-              onToggle: _toggleAppBlocker,
-              maxWidth: screenWidth - 120,
-            ),
-            const SizedBox(height: 24),
+
             // MANAGE BLOCKED APPS - MOVED TO TOP
             _buildAppBlockerOption(
               context,
@@ -450,7 +362,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               subtitle: '25 min focus + 5 min break ×4. Stay productive effortlessly.',
               icon: LucideIcons.clock9,
               color: const Color.fromARGB(255, 255, 99, 71),
-              onPressed: _startPomodoro,
+              onPressed: _startFocusMode,
               maxWidth: screenWidth - 120,
             ),
             const SizedBox(height: 40),
