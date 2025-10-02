@@ -17,7 +17,6 @@ class DailyUsageGoalManager {
 
   // Constants
   static const MethodChannel _platform = MethodChannel('aleix/usage');
-  // Removed duplicated SharedPreferences keys, now using SharedPreferencesKeys class
 
   // Notification IDs
   static const int _halfwayNotificationId = 100;
@@ -41,14 +40,40 @@ class DailyUsageGoalManager {
   final StreamController<Duration> _usageStreamController = StreamController.broadcast();
   Stream<Duration> get usageStream => _usageStreamController.stream;
 
+  // Cache management
+  bool _isInitialized = false;
+  Completer<void>? _initializationCompleter;
+
   Future<void> initialize() async {
-    await _initializeNotifications();
-    await _loadDailyLimit();
-    await _checkAndResetDailyUsage();
-    await _updateCurrentUsage();
+    if (_isInitialized) return;
     
-    _listenToScreenEvents();
-    _startUsageTimer(); // Assume screen is on at startup
+    if (_initializationCompleter != null) {
+      return _initializationCompleter!.future;
+    }
+    
+    _initializationCompleter = Completer<void>();
+    
+    try {
+      await _initializeNotifications();
+      await _loadDailyLimit();
+      await _loadCachedUsage(); // Cargar caché inmediatamente
+      
+      // Enviar uso cacheado INSTANTÁNEAMENTE
+      _usageStreamController.add(_currentUsage);
+      
+      _listenToScreenEvents();
+      _startUsageTimer();
+      
+      // Verificar reset en segundo plano sin bloquear la UI
+      _checkAndResetDailyUsage();
+      
+      _isInitialized = true;
+      _initializationCompleter!.complete();
+    } catch (e) {
+      _initializationCompleter!.completeError(e);
+      _initializationCompleter = null;
+      rethrow;
+    }
   }
 
   void _listenToScreenEvents() {
@@ -62,8 +87,8 @@ class DailyUsageGoalManager {
   }
 
   void _startUsageTimer() {
-    _usageTimer?.cancel(); // Ensure no multiple timers are running
-    _usageTimer = Timer.periodic(const Duration(seconds: 30), (_) { // Reduced frequency
+    _usageTimer?.cancel();
+    _usageTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
       _updateCurrentUsage();
     });
   }
@@ -78,84 +103,86 @@ class DailyUsageGoalManager {
     await _notificationsPlugin.initialize(initSettings);
   }
 
+  // OPTIMIZADO: Cargar caché más rápido
   Future<void> _loadCachedUsage() async {
-    final prefs = await SharedPreferences.getInstance();
-    final cachedSeconds = prefs.getInt(SharedPreferencesKeys.cachedUsage) ?? 0;
-    _currentUsage = Duration(seconds: cachedSeconds);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedSeconds = prefs.getInt(SharedPreferencesKeys.cachedUsage) ?? 0;
+      _currentUsage = Duration(seconds: cachedSeconds);
+    } catch (e) {
+      _currentUsage = Duration.zero;
+    }
   }
 
   Future<void> _saveCachedUsage() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(SharedPreferencesKeys.cachedUsage, _currentUsage.inSeconds);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(SharedPreferencesKeys.cachedUsage, _currentUsage.inSeconds);
+    } catch (e) {
+      debugPrint('Error saving cached usage: $e');
+    }
   }
 
+  // OPTIMIZADO: Verificar reset sin bloquear
   Future<void> _checkAndResetDailyUsage() async {
-    final prefs = await SharedPreferences.getInstance();
-    final now = DateTime.now();
-    final lastResetStr = prefs.getString(SharedPreferencesKeys.lastResetDate);
-    
-    DateTime? lastResetDate;
-    if (lastResetStr != null) {
-      lastResetDate = DateTime.tryParse(lastResetStr);
-    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now();
+      final lastResetStr = prefs.getString(SharedPreferencesKeys.lastResetDate);
+      
+      DateTime? lastResetDate;
+      if (lastResetStr != null) {
+        lastResetDate = DateTime.tryParse(lastResetStr);
+      }
 
-    // If it's a new calendar day or the last reset date is missing, perform a reset.
-    // This handles cases where the app might not have been running when the alarm fired.
-    if (lastResetDate == null || !isSameCalendarDay(now, lastResetDate)) {
-      await resetDailyUsage();
-    } else {
-      await _loadCachedUsage();
+      if (lastResetDate == null || !isSameCalendarDay(now, lastResetDate)) {
+        await resetDailyUsage();
+      }
+    } catch (e) {
+      debugPrint('Error checking reset: $e');
     }
   }
 
-  /// Resets the daily usage statistics to zero.
-  ///
-  /// This method is typically called by a scheduled background task (e.g., via `android_alarm_manager_plus`)
-  /// at midnight to ensure the daily usage goal is reset for the new day.
-  /// It also resets all notification flags and updates the last reset date.
   Future<void> resetDailyUsage() async {
     _currentUsage = Duration.zero;
     _resetNotificationFlags();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(SharedPreferencesKeys.lastResetDate, DateTime.now().toIso8601String());
-    await _saveCachedUsage();
-    _usageStreamController.add(_currentUsage);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(SharedPreferencesKeys.lastResetDate, DateTime.now().toIso8601String());
+      await _saveCachedUsage();
+      _usageStreamController.add(_currentUsage);
+    } catch (e) {
+      debugPrint('Error resetting daily usage: $e');
+    }
   }
 
-  /// Checks if two [DateTime] objects fall on the same calendar day (year, month, and day).
-  ///
-  /// [a] The first [DateTime] to compare.
-  /// [b] The second [DateTime] to compare.
-  /// Returns `true` if both [DateTime]s are on the same calendar day, `false` otherwise.
   bool isSameCalendarDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
+  // NUEVO: Método rápido para obtener uso actual
   Future<void> updateUsage() async {
     await _updateCurrentUsage();
   }
 
+  // OPTIMIZADO: Actualización más rápida
   Future<void> _updateCurrentUsage() async {
-    // Display cached usage immediately to reduce perceived delay
-    await _loadCachedUsage();
-    _usageStreamController.add(_currentUsage);
-
     try {
       Duration newUsage = await _getUsageWithNewMethod();
       
-      // Fallback to traditional method if the new method returns 0 minutes.
-      // This might be a workaround for some native API inconsistencies.
       if (newUsage.inMinutes == 0) {
         newUsage = await _getUsageWithTraditionalMethod();
       }
       
-      _currentUsage = newUsage;
-      await _saveCachedUsage();
-      
-      _usageStreamController.add(_currentUsage);
-      _handleNotifications();
-      
+      if (_currentUsage != newUsage) {
+        _currentUsage = newUsage;
+        await _saveCachedUsage();
+        _usageStreamController.add(_currentUsage);
+        _handleNotifications();
+      }
     } catch (e) {
+      debugPrint('Error updating usage: $e');
+      // Mantener el valor cacheado si hay error
       _usageStreamController.add(_currentUsage);
     }
   }
@@ -170,7 +197,6 @@ class DailyUsageGoalManager {
       });
       return Duration(milliseconds: stats['total'] ?? 0);
     } catch (e) {
-      debugPrint('Error getting usage stats with new method: $e');
       return Duration.zero;
     }
   }
@@ -186,23 +212,30 @@ class DailyUsageGoalManager {
       });
       return Duration(milliseconds: stats['total'] ?? 0);
     } catch (e) {
-      debugPrint('Error getting usage stats with traditional method: $e');
       return Duration.zero;
     }
   }
 
   Future<void> _loadDailyLimit() async {
-    final prefs = await SharedPreferences.getInstance();
-    final seconds = prefs.getInt(SharedPreferencesKeys.dailyLimit);
-    _dailyLimit = Duration(seconds: seconds ?? 7200);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final seconds = prefs.getInt(SharedPreferencesKeys.dailyLimit);
+      _dailyLimit = Duration(seconds: seconds ?? 7200);
+    } catch (e) {
+      _dailyLimit = const Duration(hours: 2);
+    }
   }
 
   Future<void> updateDailyLimit(Duration newLimit) async {
     _dailyLimit = newLimit;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(SharedPreferencesKeys.dailyLimit, newLimit.inSeconds);
-    _resetNotificationFlags();
-    _usageStreamController.add(_currentUsage);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(SharedPreferencesKeys.dailyLimit, newLimit.inSeconds);
+      _resetNotificationFlags();
+      _usageStreamController.add(_currentUsage);
+    } catch (e) {
+      debugPrint('Error updating daily limit: $e');
+    }
   }
 
   void _resetNotificationFlags() {
@@ -238,37 +271,43 @@ class DailyUsageGoalManager {
   }
 
   Future<void> _sendNotification(int id, String title, String body) async {
-    const androidDetails = AndroidNotificationDetails(
-      'limit_channel',
-      'Daily Usage Alerts',
-      channelDescription: 'Notifies about your daily screen time progress',
-      importance: Importance.high,
-      priority: Priority.high,
-    );
-    const details = NotificationDetails(android: androidDetails);
-    await _notificationsPlugin.show(
-      id,
-      title, 
-      body, 
-      details
-    );
+    try {
+      const androidDetails = AndroidNotificationDetails(
+        'limit_channel',
+        'Daily Usage Alerts',
+        channelDescription: 'Notifies about your daily screen time progress',
+        importance: Importance.high,
+        priority: Priority.high,
+      );
+      const details = NotificationDetails(android: androidDetails);
+      await _notificationsPlugin.show(id, title, body, details);
+    } catch (e) {
+      debugPrint('Error sending notification: $e');
+    }
   }
 
   Duration get currentUsage => _currentUsage;
   Duration get dailyLimit => _dailyLimit;
 
   Future<int> getCurrentStreak() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(SharedPreferencesKeys.currentStreak) ?? 0;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getInt(SharedPreferencesKeys.currentStreak) ?? 0;
+    } catch (e) {
+      return 0;
+    }
   }
 
   Future<int> getMaxStreak() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(SharedPreferencesKeys.maxStreak) ?? 0;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getInt(SharedPreferencesKeys.maxStreak) ?? 0;
+    } catch (e) {
+      return 0;
+    }
   }
 }
 
-// ✅ SOLO UNA DEFINICIÓN DE DailyUsageGoalScreen - BORRA LAS OTRAS
 class DailyUsageGoalScreen extends StatefulWidget {
   const DailyUsageGoalScreen({super.key});
 
@@ -283,6 +322,7 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
   int _currentStreak = 0;
   int _maxStreak = 0;
   StreamSubscription<Duration>? _usageSubscription;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -291,27 +331,78 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
   }
 
   Future<void> _initializeManager() async {
-    await _manager.initialize();
+    // Mostrar datos cacheados inmediatamente
+    await _loadCachedData();
     
     _usageSubscription = _manager.usageStream.listen((usage) {
-      setState(() {
-        _currentUsage = usage;
-        _dailyLimit = _manager.dailyLimit;
-      });
+      if (mounted) {
+        setState(() {
+          _currentUsage = usage;
+          _dailyLimit = _manager.dailyLimit;
+          _isLoading = false;
+        });
+      }
     });
 
-    _loadStreakData();
+    // Inicializar manager en segundo plano
+    _manager.initialize().then((_) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+      _loadStreakData();
+    }).catchError((error) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    });
+  }
+
+  // NUEVO: Cargar datos cacheados inmediatamente
+  Future<void> _loadCachedData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Cargar límite diario cacheado
+      final seconds = prefs.getInt(SharedPreferencesKeys.dailyLimit);
+      _dailyLimit = Duration(seconds: seconds ?? 3600);
+      
+      // Cargar uso cacheado
+      final cachedSeconds = prefs.getInt(SharedPreferencesKeys.cachedUsage) ?? 0;
+      _currentUsage = Duration(seconds: cachedSeconds);
+      
+      // Cargar streaks cacheados
+      _currentStreak = prefs.getInt(SharedPreferencesKeys.currentStreak) ?? 0;
+      _maxStreak = prefs.getInt(SharedPreferencesKeys.maxStreak) ?? 0;
+      
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      // Usar valores por defecto si hay error
+      _currentUsage = Duration.zero;
+      _dailyLimit = const Duration(hours: 2);
+      _currentStreak = 0;
+      _maxStreak = 0;
+    }
   }
 
   Future<void> _loadStreakData() async {
-    final currentStreak = await _manager.getCurrentStreak();
-    final maxStreak = await _manager.getMaxStreak();
-    
-    if (mounted) {
-      setState(() {
-        _currentStreak = currentStreak;
-        _maxStreak = maxStreak;
-      });
+    try {
+      final currentStreak = await _manager.getCurrentStreak();
+      final maxStreak = await _manager.getMaxStreak();
+      
+      if (mounted) {
+        setState(() {
+          _currentStreak = currentStreak;
+          _maxStreak = maxStreak;
+        });
+      }
+    } catch (e) {
+      // Mantener valores cacheados si hay error
     }
   }
 
@@ -402,8 +493,8 @@ class _DailyUsageGoalScreenState extends State<DailyUsageGoalScreen> {
                   Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      if (_currentUsage == Duration.zero && _manager.currentUsage == Duration.zero) // Check if initial fetch is still in progress
-                        const CircularProgressIndicator() // Show loading indicator
+                      if (_isLoading)
+                        const CircularProgressIndicator()
                       else
                         Text(
                           _formatDuration(_currentUsage), 
