@@ -1,44 +1,39 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:app/utils/constants.dart';
 
 class UsageStorageService {
-  static const String _dailyLimitKey = 'daily_limit_seconds';
-  static const String _dailyUsageKey = 'daily_usage_seconds';
-  static const String _lastResetDateKey = 'last_reset_date';
-  static const String _currentStreakKey = 'current_streak';
-  static const String _maxStreakKey = 'max_streak';
-  static const String _lastUsageDateKey = 'last_usage_date';
+  // Removed duplicated SharedPreferences keys, now using SharedPreferencesKeys class
 
   /*───────────────────────────────────────────────────────────────────────────
   | Public setters / getters                                                  |
   ───────────────────────────────────────────────────────────────────────────*/
   Future<void> setDailyLimit(Duration limit) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_dailyLimitKey, limit.inSeconds);
+    await prefs.setInt(SharedPreferencesKeys.dailyLimit, limit.inSeconds);
   }
 
   Future<Duration> getDailyLimit() async {
     final prefs = await SharedPreferences.getInstance();
-    final seconds = prefs.getInt(_dailyLimitKey);
+    final seconds = prefs.getInt(SharedPreferencesKeys.dailyLimit);
     return Duration(seconds: seconds ?? 7200);
   }
 
   Future<void> addUsage(Duration amount) async {
     final prefs = await SharedPreferences.getInstance();
     await _maybeResetUsage(prefs);
-    final current = prefs.getInt(_dailyUsageKey) ?? 0;
-    await prefs.setInt(_dailyUsageKey, current + amount.inSeconds);220
+    final current = prefs.getInt(SharedPreferencesKeys.dailyUsage) ?? 0;
+    await prefs.setInt(SharedPreferencesKeys.dailyUsage, current + amount.inSeconds);220
   }
 
   Future<Duration> getDailyUsage() async {
     final prefs = await SharedPreferences.getInstance();
     await _maybeResetUsage(prefs);
-    return Duration(seconds: prefs.getInt(_dailyUsageKey) ?? 0);
+    return Duration(seconds: prefs.getInt(SharedPreferencesKeys.dailyUsage) ?? 0);
   }
 
   Future<void> resetUsage() async {
-    final prefs = await SharedPreferences.getInstance();1
-    await prefs.setInt(_dailyUsageKey, 0);
-    await prefs.setString(_lastResetDateKey, DateTime.now().toIso8601String());
+    await prefs.setInt(SharedPreferencesKeys.dailyUsage, 0);
+    await prefs.setString(SharedPreferencesKeys.lastResetDate, DateTime.now().toIso8601String());
   }
 
   Future<void> setLastUsageDate(DateTime date) async {
@@ -48,28 +43,28 @@ class UsageStorageService {
 
   Future<DateTime?> getLastUsageDate() async {
     final prefs = await SharedPreferences.getInstance();
-    final dateStr = prefs.getString(_lastUsageDateKey);
+    final dateStr = prefs.getString(SharedPreferencesKeys.lastUsageDate);
     return dateStr != null ? DateTime.tryParse(dateStr) : null;
   }
 
   Future<void> setCurrentStreak(int streak) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_currentStreakKey, streak);
+    await prefs.setInt(SharedPreferencesKeys.currentStreak, streak);
   }
 
   Future<int> getCurrentStreak() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_currentStreakKey) ?? 0;
+    return prefs.getInt(SharedPreferencesKeys.currentStreak) ?? 0;
   }
 
   Future<void> setMaxStreak(int streak) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_maxStreakKey, streak);
+    await prefs.setInt(SharedPreferencesKeys.maxStreak, streak);
   }
 
   Future<int> getMaxStreak() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_maxStreakKey) ?? 0;
+    return prefs.getInt(SharedPreferencesKeys.maxStreak) ?? 0;
   }
 
   /*───────────────────────────────────────────────────────────────────────────
@@ -77,12 +72,11 @@ class UsageStorageService {
   ───────────────────────────────────────────────────────────────────────────*/
   Future<void> _maybeResetUsage(SharedPreferences prefs) async {
     final now = DateTime.now();
-    final lastResetStr = prefs.getString(_lastResetDateKey);
+    final lastResetStr = prefs.getString(SharedPreferencesKeys.lastResetDate);
 
     // First run – initialise last reset date
-    if (lastResetStr == null) {
-      await prefs.setString(_lastResetDateKey, now.toIso8601String());
-      await prefs.setString(_lastUsageDateKey, now.toIso8601String());
+      await prefs.setString(SharedPreferencesKeys.lastResetDate, now.toIso8601String());
+      await prefs.setString(SharedPreferencesKeys.lastUsageDate, now.toIso8601String());
       return;
     }
 
@@ -91,10 +85,10 @@ class UsageStorageService {
     if (lastReset == null || !_isSameDay(now, lastReset)) {
       // 1) Evaluate yesterday's usage **before** resetting it
       final prevUsageSeconds = prefs.getInt(_dailyUsageKey) ?? 0;
-      final dailyLimitSeconds = prefs.getInt(_dailyLimitKey) ?? 7200;
+      final dailyLimitSeconds = prefs.getInt(SharedPreferencesKeys.dailyLimit) ?? 7200;
 
-      int currentStreak = prefs.getInt(_currentStreakKey) ?? 0;
-      int maxStreak = prefs.getInt(_maxStreakKey) ?? 0;
+      int currentStreak = prefs.getInt(SharedPreferencesKeys.currentStreak) ?? 0;
+      int maxStreak = prefs.getInt(SharedPreferencesKeys.maxStreak) ?? 0;
 
       if (prevUsageSeconds <= dailyLimitSeconds) {
         currentStreak += 1;
@@ -105,13 +99,13 @@ class UsageStorageService {
         currentStreak = 0;
       }
 
-      await prefs.setInt(_currentStreakKey, currentStreak);
-      await prefs.setInt(_maxStreakKey, maxStreak);
-      await prefs.setString(_lastUsageDateKey, now.toIso8601String());
+      await prefs.setInt(SharedPreferencesKeys.currentStreak, currentStreak);
+      await prefs.setInt(SharedPreferencesKeys.maxStreak, maxStreak);
+      await prefs.setString(SharedPreferencesKeys.lastUsageDate, now.toIso8601String());
 
       // 2) Clear usage for the new day and mark the reset timestamp
-      await prefs.setInt(_dailyUsageKey, 0);
-      await prefs.setString(_lastResetDateKey, now.toIso8601String());
+      await prefs.setInt(SharedPreferencesKeys.dailyUsage, 0);
+      await prefs.setString(SharedPreferencesKeys.lastResetDate, now.toIso8601String());
     }
   }
 

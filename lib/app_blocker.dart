@@ -19,34 +19,37 @@ class AppBlocker {
   static const int _fiveMinuteInSeconds = 300;
   static const Duration _notificationPeriod = Duration(seconds: 10);
 
-
   Set<String> _blockedAppSettings = {}; // packageName
   Set<String> _forceBlockedApps = {}; // Apps force-blocked by Focus Mode
   bool _isActive = false;
-  final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
-  
-  Timer? _trackingTimer;
+  final FlutterLocalNotificationsPlugin _notificationsPlugin =
+      FlutterLocalNotificationsPlugin();
 
+  Timer? _trackingTimer;
 
   Future<void> initialize() async {
     await _initializeNotifications();
     await _loadBlockedAppSettings();
     await _loadBlockerState();
-    
+
     if (_isActive) {
       _startAppUsageTracking();
     }
   }
 
   Future<void> _initializeNotifications() async {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const initializationSettings = InitializationSettings(android: androidSettings);
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
+    const initializationSettings = InitializationSettings(
+      android: androidSettings,
+    );
     await _notificationsPlugin.initialize(initializationSettings);
   }
 
   void _startAppUsageTracking() {
     _stopAppUsageTracking();
-    
+
     _trackingTimer = Timer.periodic(_trackingInterval, (timer) async {
       if (!_isActive && _forceBlockedApps.isEmpty) return;
 
@@ -55,15 +58,22 @@ class AppBlocker {
           DateTime.now().subtract(_usageQueryWindow),
           DateTime.now(),
         );
-        
+
         if (usageStats.isNotEmpty) {
-          var validStats = usageStats.where((stat) => stat.lastTimeUsed != null && stat.packageName != null).toList();
-          
+          var validStats = usageStats
+              .where(
+                (stat) => stat.lastTimeUsed != null && stat.packageName != null,
+              )
+              .toList();
+
           if (validStats.isNotEmpty) {
-            validStats.sort((a, b) => b.lastTimeUsed!.compareTo(a.lastTimeUsed!));
+            validStats.sort(
+              (a, b) => b.lastTimeUsed!.compareTo(a.lastTimeUsed!),
+            );
             String currentApp = validStats.first.packageName!;
-            
-            if (_forceBlockedApps.contains(currentApp) || _blockedAppSettings.contains(currentApp)) {
+
+            if (_forceBlockedApps.contains(currentApp) ||
+                _blockedAppSettings.contains(currentApp)) {
               _triggerBlock(currentApp);
               return;
             }
@@ -75,15 +85,10 @@ class AppBlocker {
     });
   }
 
-
-
-
   void _stopAppUsageTracking() {
     _trackingTimer?.cancel();
     _trackingTimer = null;
   }
-
-
 
   Future<String> _getAppName(String packageName) async {
     try {
@@ -103,7 +108,9 @@ class AppBlocker {
     } else if (blockedAppsData is String) {
       // Handle old data format (JSON string of a Map)
       try {
-        final Map<String, dynamic> blockedAppsMap = json.decode(blockedAppsData);
+        final Map<String, dynamic> blockedAppsMap = json.decode(
+          blockedAppsData,
+        );
         _blockedAppSettings = blockedAppsMap.keys.toSet();
         // Resave in the new format
         await _saveBlockedAppSettings();
@@ -122,7 +129,10 @@ class AppBlocker {
 
   Future<void> _saveBlockedAppSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('blockedAppSettings', _blockedAppSettings.toList());
+    await prefs.setStringList(
+      'blockedAppSettings',
+      _blockedAppSettings.toList(),
+    );
   }
 
   Future<void> _saveBlockerState() async {
@@ -130,7 +140,8 @@ class AppBlocker {
     await prefs.setBool('appBlockerActive', _isActive);
   }
 
-  bool isAppBlocked(String packageName) => _isActive && _blockedAppSettings.contains(packageName);
+  bool isAppBlocked(String packageName) =>
+      _isActive && _blockedAppSettings.contains(packageName);
   List<String> get blockedApps => _blockedAppSettings.toList();
   bool get isActive => _isActive;
 
@@ -150,11 +161,10 @@ class AppBlocker {
   Future<void> toggleBlocker(bool active) async {
     _isActive = active;
     await _saveBlockerState();
-    
+
     if (active) {
       _startAppUsageTracking();
-    }
-    else {
+    } else {
       _stopAppUsageTracking();
     }
   }
@@ -170,7 +180,9 @@ class AppBlocker {
   }
 
   void _triggerBlock(String packageName, {bool isForced = false}) {
-    print('[APP BLOCKER] TRIGGERING BLOCK FOR: $packageName (Forced: $isForced)');
+    print(
+      '[APP BLOCKER] TRIGGERING BLOCK FOR: $packageName (Forced: $isForced)',
+    );
     FlutterForegroundTask.launchApp('/inspirationalBlockingOverlay');
   }
 

@@ -50,7 +50,7 @@
         <service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
             android:exported="true"
-            android:foregroundServiceType="dataSync|phoneCall">
+            android:foregroundServiceType="dataSync">
             <!-- ✅ NUEVO: Intent filter para asegurar funcionamiento -->
             <intent-filter>
                 <action android:name="com.pravera.flutter_foreground_task.service.ForegroundService" />
@@ -71,7 +71,7 @@
             <!-- ✅ NUEVO: Meta-data para el foreground service -->
             <meta-data
                 android:name="com.pravera.flutter_foreground_task.foreground_service_type"
-                android:value="dataSync|phoneCall" />
+                android:value="dataSync" />
 
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"

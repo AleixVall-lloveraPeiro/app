@@ -7,6 +7,7 @@ import 'package:flutter_foreground_task/models/foreground_task_event_action.dart
 import 'home_screen.dart';
 import 'daily_usage_goal.dart'; // Import DailyUsageGoalManager
 import 'inspirational_blocking_overlay.dart';
+import 'package:app/utils/constants.dart'; // Import SharedPreferencesKeys
 
 /// Top-level function to be executed by the alarm manager for daily usage reset.
 ///
@@ -17,6 +18,14 @@ Future<void> onResetDailyUsage() async {
   WidgetsFlutterBinding.ensureInitialized();
   final DailyUsageGoalManager manager = DailyUsageGoalManager();
   await manager.resetDailyUsage();
+}
+
+/// The callback function for FlutterForegroundTask.
+@pragma('vm:entry-point')
+void startCallback() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // The setTaskHandler function must be called to handle the task in the background.
+  FlutterForegroundTask.setTaskHandler(MyTaskHandler());
 }
 
 /// Main entry point of the application.
@@ -33,19 +42,27 @@ void main() async {
 
   _initForegroundTask();
 
-  FlutterForegroundTask.setTaskHandler(MyTaskHandler());
+  // Start the foreground task
+  await FlutterForegroundTask.startService(
+    notificationTitle: 'Sumaia is running in the background',
+    notificationText: 'Monitoring app usage',
+    callback: startCallback,
+  );
 
   final prefs = await SharedPreferences.getInstance();
-  final bool hasAccess = prefs.getBool('usage_permission_granted') ?? false;
+  final bool hasAccess = prefs.getBool(SharedPreferencesKeys.usagePermissionGranted) ?? false;
 
   runApp(MyApp(initialRoute: hasAccess ? '/' : '/permission'));
 
   // Schedule daily usage reset at midnight (00:00)
+  final now = DateTime.now();
+  DateTime nextMidnight = DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+
   await AndroidAlarmManager.periodic(
     const Duration(days: 1),
     0, // An int ID for the alarm
     onResetDailyUsage,
-    startAt: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day).add(const Duration(days: 1)),
+    startAt: nextMidnight,
     exact: true,
     wakeup: true,
   );
@@ -88,7 +105,19 @@ class MyTaskHandler extends TaskHandler {
 
   @override
   Future<void> onRepeatEvent(DateTime timestamp) async {
-    // Handle repeat events if needed
+    final DailyUsageGoalManager manager = DailyUsageGoalManager();
+    final prefs = await SharedPreferences.getInstance();
+    final lastResetStr = prefs.getString('_last_reset_date'); // Use the key from DailyUsageGoalManager
+
+    DateTime? lastResetDate;
+    if (lastResetStr != null) {
+      lastResetDate = DateTime.tryParse(lastResetStr);
+    }
+
+    final now = DateTime.now();
+    if (lastResetDate == null || !manager.isSameCalendarDay(now, lastResetDate)) {
+      await manager.resetDailyUsage();
+    }
   }
 
   @override
@@ -156,7 +185,7 @@ class _PermissionScreenState extends State<PermissionScreen> {
     bool granted = await checkUsagePermission();
     if (granted) {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('usage_permission_granted', true);
+      await prefs.setBool(SharedPreferencesKeys.usagePermissionGranted, true);
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
