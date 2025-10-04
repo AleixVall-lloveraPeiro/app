@@ -178,10 +178,11 @@ class _PermissionScreenState extends State<PermissionScreen> {
   @override
   void initState() {
     super.initState();
+    _checkPermissionLoop();
   }
 
-  Future<void> _handlePermissionRequest() async {
-    await _requestUsagePermission();
+  Future<void> _checkPermissionLoop() async {
+    if (!mounted) return; // Stop if the widget is disposed
     bool granted = await checkUsagePermission();
     if (granted) {
       final prefs = await SharedPreferences.getInstance();
@@ -189,14 +190,11 @@ class _PermissionScreenState extends State<PermissionScreen> {
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => HomeScreen()),
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Permission not granted. The app needs usage access to function correctly.'),
-        ),
-      );
+      // Check again after a delay
+      Future.delayed(const Duration(seconds: 1), _checkPermissionLoop);
     }
   }
 
@@ -212,17 +210,10 @@ class _PermissionScreenState extends State<PermissionScreen> {
     }
   }
 
-  /// Continuously checks for usage permission in a loop.
-  ///
-  /// Once permission is granted, it saves the permission status and navigates
-/// the user to the [HomeScreen]. If permission is not granted, it retries
-/// after a short delay.
-
-
   /// Requests usage access permission from the user.
   ///
   /// This method invokes a native method to open the system settings where
-/// the user can grant the required permission.
+  /// the user can grant the required permission.
   Future<void> _requestUsagePermission() async {
     try {
       await platform.invokeMethod('requestUsagePermission');
@@ -250,7 +241,7 @@ class _PermissionScreenState extends State<PermissionScreen> {
               ),
               const SizedBox(height: 24),
               ElevatedButton(
-                onPressed: _handlePermissionRequest,
+                onPressed: _requestUsagePermission,
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

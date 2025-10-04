@@ -88,7 +88,7 @@ class DailyUsageGoalManager {
 
   void _startUsageTimer() {
     _usageTimer?.cancel();
-    _usageTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+    _usageTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       _updateCurrentUsage();
     });
   }
