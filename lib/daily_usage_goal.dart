@@ -143,11 +143,36 @@ class DailyUsageGoalManager {
     }
   }
 
+  /// Resets the daily usage and updates the user's streak.
   Future<void> resetDailyUsage() async {
-    _currentUsage = Duration.zero;
-    _resetNotificationFlags();
     try {
       final prefs = await SharedPreferences.getInstance();
+
+      // --- Streak Logic ---
+      // Load the limit and usage from the day that just ended.
+      final dailyLimit = Duration(seconds: prefs.getInt(SharedPreferencesKeys.dailyLimit) ?? 7200);
+      final previousDayUsage = _currentUsage;
+
+      // The user must use the app and stay within the limit to continue the streak.
+      if (previousDayUsage > Duration.zero && previousDayUsage <= dailyLimit) {
+        // Goal met: increment streak.
+        int currentStreak = (prefs.getInt(SharedPreferencesKeys.currentStreak) ?? 0) + 1;
+        await prefs.setInt(SharedPreferencesKeys.currentStreak, currentStreak);
+
+        // Check if the new streak is the max streak.
+        int maxStreak = prefs.getInt(SharedPreferencesKeys.maxStreak) ?? 0;
+        if (currentStreak > maxStreak) {
+          await prefs.setInt(SharedPreferencesKeys.maxStreak, currentStreak);
+        }
+      } else {
+        // Goal not met (or app not used): reset streak.
+        await prefs.setInt(SharedPreferencesKeys.currentStreak, 0);
+      }
+      // --- End of Streak Logic ---
+
+      // Reset usage for the new day.
+      _currentUsage = Duration.zero;
+      _resetNotificationFlags();
       await prefs.setString(SharedPreferencesKeys.lastResetDate, DateTime.now().toIso8601String());
       await _saveCachedUsage();
       _usageStreamController.add(_currentUsage);
@@ -165,14 +190,11 @@ class DailyUsageGoalManager {
     await _updateCurrentUsage();
   }
 
-  // OPTIMIZADO: Actualización más rápida
+  /// Updates the current usage by fetching data since the start of the day.
   Future<void> _updateCurrentUsage() async {
     try {
-      Duration newUsage = await _getUsageWithNewMethod();
-      
-      if (newUsage.inMinutes == 0) {
-        newUsage = await _getUsageWithTraditionalMethod();
-      }
+      // Use the reliable "traditional" method to get usage since the start of the current day.
+      Duration newUsage = await _getUsageWithTraditionalMethod();
       
       if (_currentUsage != newUsage) {
         _currentUsage = newUsage;
@@ -182,25 +204,12 @@ class DailyUsageGoalManager {
       }
     } catch (e) {
       debugPrint('Error updating usage: $e');
-      // Mantener el valor cacheado si hay error
+      // Keep the cached value on error
       _usageStreamController.add(_currentUsage);
     }
   }
 
-  Future<Duration> _getUsageWithNewMethod() async {
-    try {
-      final now = DateTime.now();
-      final Map<dynamic, dynamic> stats = await _platform.invokeMethod('getUsageStatsForDay', {
-        'year': now.year,
-        'month': now.month - 1, 
-        'day': now.day,
-      });
-      return Duration(milliseconds: stats['total'] ?? 0);
-    } catch (e) {
-      return Duration.zero;
-    }
-  }
-
+  /// Fetches usage stats from the beginning of the current day until now.
   Future<Duration> _getUsageWithTraditionalMethod() async {
     try {
       final now = DateTime.now();
