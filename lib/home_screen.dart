@@ -26,7 +26,7 @@ class HomeScreen extends StatefulWidget {
 ///
 /// Manages the state and logic for various modes, including mindful mode and
 /// app blocker, and handles UI animations and navigation.
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// Indicates whether Mindful Usage Mode is currently active.
   bool isMindfulModeOn = false;
 
@@ -61,14 +61,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     
     _loadMindfulModeState();
     _loadAppBlockerState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      DailyUsageGoalManager().updateUsage();
-    }
   }
 
   /// Loads the saved state of the Mindful Usage Mode from shared preferences.
@@ -111,7 +103,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     focusMode.dispose();
     appBlocker.dispose();
     _playController.dispose();
-    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 

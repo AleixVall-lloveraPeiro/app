@@ -9,63 +9,22 @@ import 'daily_usage_goal.dart'; // Import DailyUsageGoalManager
 import 'inspirational_blocking_overlay.dart';
 import 'package:app/utils/constants.dart'; // Import SharedPreferencesKeys
 
-/// Top-level function to be executed by the alarm manager for daily usage reset.
-///
-/// This function is called daily at midnight (00:00) to reset the user's
-/// daily usage statistics and related notification flags.
-@pragma('vm:entry-point')
-Future<void> onResetDailyUsage() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  final DailyUsageGoalManager manager = DailyUsageGoalManager();
-  await manager.resetDailyUsage();
-}
-
-/// The callback function for FlutterForegroundTask.
-@pragma('vm:entry-point')
-void startCallback() {
-  WidgetsFlutterBinding.ensureInitialized();
-  // The setTaskHandler function must be called to handle the task in the background.
-  FlutterForegroundTask.setTaskHandler(MyTaskHandler());
-}
-
-/// Main entry point of the application.
-///
-/// Initializes Flutter bindings, checks for existing usage permission,
-/// initializes the Android Alarm Manager, and then runs the [MyApp] widget,
-/// navigating to either [HomeScreen] or [PermissionScreen] based on the
-/// permission status. It also schedules the daily usage reset alarm.
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Android Alarm Manager
-  await AndroidAlarmManager.initialize();
-
   _initForegroundTask();
 
-  // Start the foreground task
+  // Start the foreground task, which is necessary for other features.
   await FlutterForegroundTask.startService(
     notificationTitle: 'Sumaia is running in the background',
     notificationText: 'Monitoring app usage',
-    callback: startCallback,
+    callback: null, // No longer need a complex callback
   );
 
   final prefs = await SharedPreferences.getInstance();
   final bool hasAccess = prefs.getBool(SharedPreferencesKeys.usagePermissionGranted) ?? false;
 
   runApp(MyApp(initialRoute: hasAccess ? '/' : '/permission'));
-
-  // Schedule daily usage reset at midnight (00:00)
-  final now = DateTime.now();
-  DateTime nextMidnight = DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
-
-  await AndroidAlarmManager.periodic(
-    const Duration(days: 1),
-    0, // An int ID for the alarm
-    onResetDailyUsage,
-    startAt: nextMidnight,
-    exact: true,
-    wakeup: true,
-  );
 }
 
 void _initForegroundTask() {
@@ -87,43 +46,6 @@ void _initForegroundTask() {
       eventAction: ForegroundTaskEventAction.repeat(5000),
     ),
   );
-}
-
-class MyTaskHandler extends TaskHandler {
-  @override
-  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
-    // You can use the starter to start a foreground task.
-  }
-
-  @override
-  Future<void> onStartCommand(DateTime timestamp, Map<String, dynamic>? data) async {
-    final String? launchData = data?['launchData'];
-    if (launchData != null) {
-      navigatorKey.currentState?.pushNamed(launchData);
-    }
-  }
-
-  @override
-  Future<void> onRepeatEvent(DateTime timestamp) async {
-    final DailyUsageGoalManager manager = DailyUsageGoalManager();
-    final prefs = await SharedPreferences.getInstance();
-    final lastResetStr = prefs.getString('_last_reset_date'); // Use the key from DailyUsageGoalManager
-
-    DateTime? lastResetDate;
-    if (lastResetStr != null) {
-      lastResetDate = DateTime.tryParse(lastResetStr);
-    }
-
-    final now = DateTime.now();
-    if (lastResetDate == null || !manager.isSameCalendarDay(now, lastResetDate)) {
-      await manager.resetDailyUsage();
-    }
-  }
-
-  @override
-  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
-    // Handle destroy events if needed
-  }
 }
 
 /// The root widget of the application.
