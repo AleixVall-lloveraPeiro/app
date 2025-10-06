@@ -14,14 +14,32 @@ class AppBlockerScreen extends StatefulWidget {
 class _AppBlockerScreenState extends State<AppBlockerScreen> {
   final AppBlocker _appBlocker = AppBlocker();
   List<Application> _installedApps = [];
+  List<Application> _filteredApps = [];
   List<String> _selectedApps = [];
   bool _isLoading = true;
   bool _isBlockerActive = false;
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _initializeData();
+    _searchController.addListener(_filterApps);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _filterApps() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredApps = _installedApps
+          .where((app) => app.appName.toLowerCase().contains(query))
+          .toList();
+    });
   }
 
   Future<void> _initializeData() async {
@@ -35,25 +53,21 @@ class _AppBlockerScreenState extends State<AppBlockerScreen> {
   }
 
   Future<void> _getInstalledApps() async {
-    List<Application> apps = await DeviceApps.getInstalledApplications();
+    List<Application> apps = await DeviceApps.getInstalledApplications(
+      includeAppIcons: true,
+      includeSystemApps: true,
+      onlyAppsWithLaunchIntent: true,
+    );
     
-    // BETTER FILTERING: Exclude system apps and apps without proper names
     setState(() {
       _installedApps = apps
           .where((app) => 
-              !app.systemApp && 
-              app.appName.isNotEmpty &&
               app.appName != "Sumaia" && // Explicitly exclude Sumaia
-              !app.packageName.contains('.sumaia.') && // Exclude by package name
-              !app.packageName.startsWith('com.android.') && // Exclude Android system apps
-              !app.packageName.startsWith('com.google.android.') && // Exclude Google apps
-              !app.packageName.startsWith('com.sec.android.') && // Exclude Samsung apps
-              !app.packageName.contains('launcher') && // Exclude launchers
-              !app.packageName.contains('setup') && // Exclude setup apps
               app.enabled // Only enabled apps
           )
           .toList()
         ..sort((a, b) => a.appName.compareTo(b.appName));
+      _filteredApps = _installedApps;
     });
   }
 
@@ -123,65 +137,84 @@ class _AppBlockerScreenState extends State<AppBlockerScreen> {
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                // Header
-                Container(
-                  padding: EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      SwitchListTile(
-                        title: Text(
-                          'App Blocker',
-                          style: GoogleFonts.playfairDisplay(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        subtitle: Text('Enable or disable the app blocker'),
-                        value: _isBlockerActive,
-                        onChanged: (value) {
-                          setState(() {
-                            _isBlockerActive = value;
-                          });
-                          _appBlocker.toggleBlocker(value);
-                        },
-                      ),
-                      SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Selected: ${_selectedApps.length} apps',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          if (_selectedApps.isNotEmpty)
-                            TextButton(
-                              onPressed: () {
-                                setState(() {
-                                  _selectedApps.clear();
-                                });
-                              },
-                              child: Text('Clear all'),
+          : SingleChildScrollView(
+              child: Column(
+                children: [
+                  // Header
+                  Container(
+                    padding: EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        SwitchListTile(
+                          title: Text(
+                            'App Blocker',
+                            style: GoogleFonts.playfairDisplay(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
                             ),
-                        ],
-                      ),
-                    ],
+                          ),
+                          subtitle: Text('Enable or disable the app blocker'),
+                          value: _isBlockerActive,
+                          onChanged: (value) {
+                            setState(() {
+                              _isBlockerActive = value;
+                            });
+                            _appBlocker.toggleBlocker(value);
+                          },
+                        ),
+                        SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Selected: ${_selectedApps.length} apps',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            if (_selectedApps.isNotEmpty)
+                              TextButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _selectedApps.clear();
+                                  });
+                                },
+                                child: Text('Clear all'),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                // App List
-                Expanded(
-                  child: _installedApps.isEmpty
+                  // Search Bar
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: 'Search apps...',
+                        prefixIcon: Icon(Icons.search),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey.shade200,
+                      ),
+                    ),
+                  ),
+                  // App List
+                  _filteredApps.isEmpty
                       ? Center(
                           child: Text(
-                            'No user apps found',
+                            'No apps found',
                             style: TextStyle(color: Colors.grey),
                           ),
                         )
                       : ListView.builder(
-                          itemCount: _installedApps.length,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _filteredApps.length,
                           itemBuilder: (context, index) {
-                            final app = _installedApps[index];
+                            final app = _filteredApps[index];
                             final isSelected = _selectedApps.contains(app.packageName);
                             
                             return Container(
@@ -236,30 +269,30 @@ class _AppBlockerScreenState extends State<AppBlockerScreen> {
                             );
                           },
                         ),
-                ),
-                // Save Button
-                Container(
-                  padding: EdgeInsets.all(16),
-                  child: ElevatedButton(
-                    onPressed: _saveSelections,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFF6EC1E4),
-                      minimumSize: Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                  // Save Button
+                  Container(
+                    padding: EdgeInsets.all(16),
+                    child: ElevatedButton(
+                      onPressed: _saveSelections,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Color(0xFF6EC1E4),
+                        minimumSize: Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                    ),
-                    child: Text(
-                      'SAVE ${_selectedApps.length} APPS',
-                      style: GoogleFonts.playfairDisplay(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                      child: Text(
+                        'SAVE ${_selectedApps.length} APPS',
+                        style: GoogleFonts.playfairDisplay(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
     );
   }

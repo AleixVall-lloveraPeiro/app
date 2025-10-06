@@ -16,8 +16,10 @@ class FocusModeScreen extends StatefulWidget {
 
 class _FocusModeScreenState extends State<FocusModeScreen> {
   List<Application> _installedApps = [];
+  List<Application> _filteredApps = [];
   List<String> _selectedAppsToBlock = [];
   bool _isLoadingApps = true;
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -25,17 +27,28 @@ class _FocusModeScreenState extends State<FocusModeScreen> {
     _loadInstalledApps();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadInstalledApps() async {
-    // Fetch only non-system apps with icons to improve performance and relevance.
     List<Application> apps = await DeviceApps.getInstalledApplications(
       includeAppIcons: true,
-      includeSystemApps: false,
+      includeSystemApps: true,
       onlyAppsWithLaunchIntent: true,
     );
     if (mounted) {
       setState(() {
         _installedApps = apps
+            .where((app) =>
+                app.appName != "Sumaia" && // Explicitly exclude Sumaia
+                app.enabled // Only enabled apps
+            )
+            .toList()
           ..sort((a, b) => a.appName.toLowerCase().compareTo(b.appName.toLowerCase()));
+        _filteredApps = _installedApps;
         _isLoadingApps = false;
       });
     }
@@ -53,6 +66,8 @@ class _FocusModeScreenState extends State<FocusModeScreen> {
     Duration selectedDuration = const Duration(minutes: 25);
     bool isPomodoro = true;
     List<String> selectedApps = List.from(_selectedAppsToBlock);
+    _searchController.clear();
+    _filteredApps = _installedApps;
 
     showModalBottomSheet(
       context: context,
@@ -61,6 +76,15 @@ class _FocusModeScreenState extends State<FocusModeScreen> {
       builder: (context) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
+            void filterApps(String query) {
+              setModalState(() {
+                _filteredApps = _installedApps
+                    .where((app) =>
+                        app.appName.toLowerCase().contains(query.toLowerCase()))
+                    .toList();
+              });
+            }
+
             return Container(
               height: MediaQuery.of(context).size.height * 0.9,
               decoration: const BoxDecoration(
@@ -68,9 +92,9 @@ class _FocusModeScreenState extends State<FocusModeScreen> {
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: SafeArea(
-                child: SingleChildScrollView( // <-- FIX: Make the entire sheet scrollable
+                child: SingleChildScrollView( 
                   child: Column(
-                    mainAxisSize: MainAxisSize.min, // Ensure column takes minimum necessary space
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       // Header
                       Padding(
@@ -117,22 +141,41 @@ class _FocusModeScreenState extends State<FocusModeScreen> {
                       ),
 
                       // App Blocker
-                      _buildSectionCard( // <-- FIX: Removed the Expanded widget from here
-                        title: 'Block Apps (Optional)',
+                      _buildSectionCard(
+                        title: 'Block Apps',
                         child: _isLoadingApps
                             ? const Center(child: CircularProgressIndicator())
-                            : _buildAppList(
-                                installedApps: _installedApps,
-                                selectedApps: selectedApps,
-                                onAppSelected: (packageName, isSelected) {
-                                  setModalState(() {
-                                    if (isSelected) {
-                                      selectedApps.add(packageName);
-                                    } else {
-                                      selectedApps.remove(packageName);
-                                    }
-                                  });
-                                },
+                            : Column(
+                                children: [
+                                  TextField(
+                                    controller: _searchController,
+                                    onChanged: filterApps,
+                                    decoration: InputDecoration(
+                                      hintText: 'Search apps...',
+                                      prefixIcon: Icon(Icons.search),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      filled: true,
+                                      fillColor: Colors.grey.shade200,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  _buildAppList(
+                                    installedApps: _filteredApps,
+                                    selectedApps: selectedApps,
+                                    onAppSelected: (packageName, isSelected) {
+                                      setModalState(() {
+                                        if (isSelected) {
+                                          selectedApps.add(packageName);
+                                        } else {
+                                          selectedApps.remove(packageName);
+                                        }
+                                      });
+                                    },
+                                  ),
+                                ],
                               ),
                       ),
 
